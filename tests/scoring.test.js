@@ -291,6 +291,45 @@ for (let k = 0; k < 300; k++) {
   check("разброс внутри темы никогда не снимает уровень", ITEMS.length && !ev(R).validity.some((f) => f.code === "spread" && f.severity === "hard"));
 }
 
+// ── v0.5: какие ответы противоречат, уточняющие вопросы, нарушения без признаков ──
+{
+  // противоречащие пары показываются поимённо, с периодом и силой
+  const R = {};
+  for (const it of ITEMS.filter((x) => !x.rev && !x.kind)) R[it.id] = { now: { I: 1 }, child: { I: 1 } };
+  for (const it of ITEMS.filter((x) => x.rev)) { R[it.pair] = { now: { I: 4, F: "always" }, child: { I: 1 } }; R[it.id] = { now: { I: 4 }, child: { I: 3 } }; }
+  const V = ev(R).validity, pf = V.find((f) => f.code === "pair");
+  check("флаг пар перечисляет каждое противоречие", pf && pf.details.length === ITEMS.filter((x) => x.rev).length, pf && pf.details.length);
+  check("у противоречия есть оба вопроса, период и объяснение", pf && pf.details.every((d) => d.refs.length === 2 && d.refs.every((r) => ITEMS.some((x) => x.id === r.id) && r.periods.join() === "now") && d.why.length > 20));
+  check("«полностью да» на оба вопроса пары — сильное противоречие", pf && pf.details.every((d) => d.strength === "strong"));
+  check("степень согласованности: число проверок и противоречий", V.summary.checks > 0 && V.summary.conflicts >= pf.details.length && V.summary.share > 0 && V.summary.share <= 1, V.summary);
+  const ok = ev({}).validity;
+  check("без ответов противоречий нет", ok.summary.conflicts === 0 && ok.summary.checks === 0);
+
+  // «мешает сильно» в отдельных вопросах, но во всех сферах «не мешали» → мягкий флаг с деталями
+  const R2 = {};
+  for (const it of ITEMS.filter((x) => !x.rev && !x.kind)) R2[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  for (const id of ["H1-a", "H1-b", "H1-c", "H1-d"]) R2[id] = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" }, harm: 3 };
+  for (const f of Object.keys(ND.LIFE_SPHERES)) R2[f] = { now: { D: 0 }, child: { D: 0 } };
+  const sf = ev(R2).validity.find((f) => f.code === "spheres");
+  check("«мешает» в вопросах против «не мешали» в сферах → мягкий флаг", sf && sf.severity === "soft" && sf.details[0].refs.some((r) => r.fields.includes("spheres")), ev(R2).validity);
+
+  // уточняющий вопрос с ответом «нет» не опускает балл ниже основного
+  const core = ITEMS.find((x) => x.s === "A1.a" && !x.fu), fu = ITEMS.find((x) => x.s === "A1.a" && x.fu);
+  const base = { [core.id]: { now: { I: 4, F: "always" }, child: { I: 4, F: "always" } } };
+  const withFu = { ...base, [fu.id]: { now: { I: 0 }, child: { I: 0 } } };
+  const s0 = ND.scoring.symptomScore("A1.a", base, "now"), s1 = ND.scoring.symptomScore("A1.a", withFu, "now");
+  check("«нет» на уточняющий не снижает балл симптома", s1.s >= s0.s && s1.status === ND.ST.MET, [s0, s1]);
+  const withFuYes = { ...base, [core.id]: { now: { I: 3, F: "often" }, child: { I: 3, F: "often" } }, [fu.id]: { now: { I: 4, F: "always" }, child: { I: 4, F: "always" } } };
+  check("«да» на уточняющий поднимает балл", ND.scoring.symptomScore("A1.a", withFuYes, "now").s > ND.scoring.itemScore(core, withFuYes[core.id], "now").s);
+
+  // нарушения без признаков не дают баллов индекса
+  const R3 = {};
+  for (const it of ITEMS.filter((x) => !x.rev && !x.kind)) R3[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  for (const f of Object.keys(ND.LIFE_SPHERES)) R3[f] = { now: { D: 3 }, child: { D: 3 } };
+  const E3 = ev(R3);
+  check("нет признаков, но всё сильно мешает → индексы 0", E3.asd.index === 0 && E3.adhd.index === 0, [E3.asd.index, E3.adhd.index]);
+}
+
 // ── Пояснения к вопросам ──
 for (const it of ITEMS) {
   const h = ND.HINTS[it.id];
@@ -329,6 +368,7 @@ check("нет пояснений к несуществующим вопроса�
     F_OPTS: [["rare", "Редко"], ["some", "Иногда"], ["often", "Часто"], ["always", "Почти всегда"]],
     D_LABELS: ["Не мешали", "Немного", "Заметно", "Сильно"],
     CTX: [["home", "Дома"], ["work", "Работа или учёба"], ["friends", "С друзьями"], ["strangers", "С незнакомыми"], ["alone", "Наедине с собой"]],
+    MASK: ["Нет, это видно", "Частично сдерживаю", "Полностью скрываю, с усилием"],
     ST_LABEL: { met: "выполнен", probable: "вероятно", no: "нет", nodata: "нет данных" },
     LEVEL: { high: ["Высокое соответствие"], unreliable: ["Соответствие под вопросом"], partial: ["Частичное соответствие"], subclinical: ["Отдельные черты"], none: ["Не соответствует"] },
   };

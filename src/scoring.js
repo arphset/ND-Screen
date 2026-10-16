@@ -71,24 +71,29 @@ ND.scoring = (function () {
   }
   const atLeastProb = (st) => st === ST.MET || st === ST.PROB;
 
-  // общий расчёт по набору пунктов: учитываются только открытые (eligible) пункты
+  // Общий расчёт по набору пунктов: учитываются только открытые (eligible) пункты.
+  // Балл = большее из двух: среднее по основным пунктам или среднее по основным вместе с уточняющими.
+  // Уточняющие вопросы открываются только тем, кто ответил «частично» и выше на основной, и описывают отдельные,
+  // часто более редкие примеры признака. Если бы считалось только общее среднее, человек, которому они открылись,
+  // получал бы меньше того, кому не открылись: «полностью да» на основной и «нет» на уточняющий давали бы половину
+  // балла. Поэтому уточняющие вопросы могут поднять балл (больше проявлений), но не опустить его ниже основных.
   function aggregate(items, R, period) {
     const open = items.filter((it) => !it.rev && ND.eligible(it, R));
     const scores = open.map((it) => ({ it, sc: itemScore(it, R[it.id], period) })).filter((x) => x.sc);
     const core = items.filter((it) => !it.rev && !it.fu);
     const coreAnswered = core.filter((it) => itemScore(it, R[it.id], period)).length;
     const coverage = core.length ? coreAnswered / core.length : 0;
-    if (!scores.length) return { s: 0, lo: 0, hi: 0, coverage, n: 0, scores };
-    return {
-      s: mean(scores.map((x) => x.sc.s)), lo: mean(scores.map((x) => x.sc.lo)), hi: mean(scores.map((x) => x.sc.hi)),
-      coverage, n: scores.length, scores,
-    };
+    if (!scores.length) return { s: 0, lo: 0, hi: 0, mean: 0, coverage, n: 0, scores };
+    const avg = (xs) => ({ s: mean(xs.map((x) => x.sc.s)), lo: mean(xs.map((x) => x.sc.lo)), hi: mean(xs.map((x) => x.sc.hi)) });
+    const all = avg(scores), coreScores = scores.filter((x) => !x.it.fu);
+    const best = coreScores.length && avg(coreScores).s > all.s ? avg(coreScores) : all;
+    return { ...best, mean: all.s, coverage, n: scores.length, scores };
   }
 
   // L2: конструкт за период
   function constructScore(cid, R, period) {
     const a = aggregate(ND.ITEMS.filter((it) => it.c === cid), R, period);
-    const sd = a.n ? Math.sqrt(mean(a.scores.map((x) => (x.sc.s - a.s) ** 2))) : 0;
+    const sd = a.n ? Math.sqrt(mean(a.scores.map((x) => (x.sc.s - a.mean) ** 2))) : 0;
     const evidence = a.scores.filter((x) => x.sc.s >= P.thetaLo).map((x) => x.it.id);
     return { cid, period, s: a.s, lo: a.lo, hi: a.hi, sd, coverage: a.coverage, n: a.n, status: a.n ? classify(a, a.coverage) : ST.NODATA, evidence };
   }
@@ -121,31 +126,47 @@ ND.scoring = (function () {
   }
 
   // L3c: согласованность и надёжность ответов.
-  // Каждый флаг: { code, severity: "hard" | "soft", text, items? }. «hard» снимает уровень «высокое соответствие».
+  // Каждый флаг: { code, severity: "hard" | "soft", text, items?, details? }. «hard» снимает уровень «высокое соответствие».
+  // details — конкретные противоречия: { strength: "strong" | "moderate", why, refs: [{ id, period?, fields }] },
+  // где fields — какие части ответа показать: "I" (уровень за период), "harm", "mask", "spheres".
+  // Баллы проверка не меняет: она только находит и показывает противоречия.
   function validity(R) {
     const flags = [];
     const ans = (id) => { const r = R[id]; return r && !r.na ? r : null; };
+    const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100; return (m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many).replace("{n}", n); };
+    const PER = { now: "сейчас", child: "в детстве" };
+    let checks = 0;
 
-    // 1. Обратные пары: «да» на прямой и «да» на обратный вопрос (или «нет» на оба), по каждому периоду
-    const pairs = ND.ITEMS.filter((x) => x.rev);
-    const badPairs = [];
+    // 1. Обратные пары: «да» на прямой и «да» на обратный вопрос (или «нет» на оба), по каждому периоду.
+    // Расхождение d = |обратный − (4 − прямой)|: 4 — ответы прямо противоположны («полностью да» на оба), 3 — почти.
+    const badPairs = [], pairDetails = [];
     let checkedPairs = 0;
-    for (const it of pairs) {
-      const a = ans(it.id), b = ans(it.pair);
+    for (const it of ND.ITEMS.filter((x) => x.rev)) {
+      const a = ans(it.pair), b = ans(it.id);
       if (!a || !b) continue;
-      let checked = false, bad = false;
+      let checked = false, worst = 0;
+      const periods = [], yes = [];
       for (const p of ND.PERIODS) {
         if (!a[p] || !b[p] || a[p].I == null || b[p].I == null) continue;
         checked = true;
-        if (Math.abs(b[p].I - (4 - a[p].I)) >= 3) bad = true;
+        const d = Math.abs(b[p].I - (4 - a[p].I));
+        if (d < 3) continue;
+        worst = Math.max(worst, d); periods.push(p); yes.push(a[p].I >= 2);
       }
-      if (checked) checkedPairs++;
-      if (bad) badPairs.push([it.pair, it.id]);
+      if (checked) { checkedPairs++; checks++; }
+      if (!periods.length) continue;
+      badPairs.push([it.pair, it.id]);
+      const when = periods.map((p) => PER[p]).join(" и "), both = yes.every(Boolean) ? true : yes.every((x) => !x) ? false : null;
+      pairDetails.push({ strength: worst === 4 ? "strong" : "moderate", periods,
+        refs: [{ id: it.pair, periods, fields: ["I"] }, { id: it.id, periods, fields: ["I"] }],
+        why: `Вопросы противоположны по смыслу, а ответы ${when} на оба ` +
+          (both === true ? "утвердительные. Если верно первое утверждение, второе обычно неверно."
+            : both === false ? "отрицательные. Обычно верно хотя бы одно из двух утверждений."
+            : "совпадают по смыслу, хотя должны расходиться.") });
     }
     if (badPairs.length)
-      flags.push({ code: "pair", severity: badPairs.length >= 2 ? "hard" : "soft", items: badPairs.flat(),
-        text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом: ` +
-          badPairs.slice(0, 3).map(([x, y]) => `«${short(x)}» и «${short(y)}»`).join("; ") + (badPairs.length > 3 ? ` и ещё ${badPairs.length - 3}` : "") + "." });
+      flags.push({ code: "pair", severity: badPairs.length >= 2 ? "hard" : "soft", items: badPairs.flat(), details: pairDetails,
+        text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом.` });
 
     // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно» или «полностью скрываю».
     // Отмеченные места при «совсем нет» не считаются противоречием: люди часто отмечают, где бывает сама ситуация,
@@ -154,29 +175,63 @@ ND.scoring = (function () {
     for (const it of ND.ITEMS.filter((x) => !x.rev && !x.kind && ND.eligible(x, R))) {
       const r = ans(it.id);
       if (!r || !r.now || r.now.I !== 0) continue;
-      const why = [];
-      if (r.harm >= 2) why.push("мешает");
-      if (r.mask === 2) why.push("скрываю");
-      if (why.length) inner.push({ id: it.id, why });
+      checks++;
+      const fields = ["I"], why = [];
+      if (r.harm >= 2) { fields.push("harm"); why.push("что он мешает"); }
+      if (r.mask === 2) { fields.push("mask"); why.push("что вы его полностью скрываете"); }
+      if (why.length) inner.push({ strength: r.harm === 3 || why.length === 2 ? "strong" : "moderate", refs: [{ id: it.id, period: "now", fields }],
+        why: `Выбрано «совсем нет», то есть признака нет, но при этом отмечено, ${why.join(" и ")}. Одно из двух, скорее всего, отмечено по ошибке.` });
     }
     if (inner.length)
-      flags.push({ code: "inner", severity: inner.length >= 5 ? "hard" : "soft", items: inner.map((x) => x.id),
-        text: `В ${inner.length} ответах выбрано «совсем нет», но при этом отмечено, что признак мешает или скрывается с усилием` +
-          (inner.length <= 3 ? `: ${inner.map((x) => `«${short(x.id)}»`).join("; ")}` : "") + "." });
+      flags.push({ code: "inner", severity: inner.length >= 5 ? "hard" : "soft", items: inner.map((x) => x.refs[0].id), details: inner,
+        text: `${plural(inner.length, "В {n} ответе", "В {n} ответах", "В {n} ответах")} выбрано «совсем нет», но при этом отмечено, что признак мешает или скрывается с усилием.` });
 
-    // 3. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы.
+    // 3. Отдельные вопросы против итоговых вопросов о жизни: по отдельным признакам «мешает заметно или сильно»,
+    // а во всех сферах жизни «не мешали». Мягкий флаг: человек мог оценивать сферы по-другому.
+    const spheres = Object.keys(ND.LIFE_SPHERES).map((f) => ans(f)).filter((r) => r && r.now && r.now.D != null);
+    const harmed = ND.ITEMS.filter((it) => !it.rev && !it.kind && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && r.harm >= 2; });
+    if (spheres.length >= 3 && ND.ITEMS.some((it) => { const r = ans(it.id); return r && r.harm != null; })) {
+      checks++;
+      if (harmed.length >= 3 && spheres.every((r) => r.now.D === 0))
+        flags.push({ code: "spheres", severity: "soft", items: harmed.map((x) => x.id),
+          text: `${plural(harmed.length, "В {n} вопросе", "В {n} вопросах", "В {n} вопросах")} отмечено, что признак мешает заметно или сильно, но в итоговых вопросах о сферах жизни везде выбрано «не мешали».`,
+          details: [{ strength: "moderate", refs: [...harmed.slice(0, 4).map((it) => ({ id: it.id, period: "now", fields: ["I", "harm"] })), { id: "F1", fields: ["spheres"] }],
+            why: "Если отдельные особенности заметно мешают, это обычно видно хотя бы в одной сфере: работе, отношениях, быту или самооценке." }] });
+    }
+
+    // 4. Камуфляж: в вопросах о маскировке почти везде «нет», но в вопросах об общении многое «полностью скрываю, с усилием».
+    const camo = constructScore("CAMO", R, "now");
+    const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 1 && r.mask === 2; });
+    if (camo.n >= 3) {
+      checks++;
+      if (camo.s < 0.25 && hidden.length >= 4) {
+        const camoItems = ND.ITEMS.filter((it) => it.c === "CAMO" && !it.fu).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I != null && r.now.I <= 1; });
+        flags.push({ code: "camo", severity: "soft", items: [...hidden.map((x) => x.id), ...camoItems.map((x) => x.id)],
+          text: `${plural(hidden.length, "В {n} вопросе", "В {n} вопросах", "В {n} вопросах")} об общении отмечено «полностью скрываю, с усилием», а в вопросах о маскировке в основном «нет».`,
+          details: [{ strength: "moderate", refs: [...hidden.slice(0, 3).map((it) => ({ id: it.id, period: "now", fields: ["I", "mask"] })), ...camoItems.slice(0, 2).map((it) => ({ id: it.id, period: "now", fields: ["I"] }))],
+            why: "Сильное сокрытие признаков в общении и есть маскировка, поэтому ответы в блоке о маскировке обычно тоже выше." }] });
+      }
+    }
+
+    // 5. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы.
     // Это не противоречие: вопросы одной темы описывают разные проявления, и у живых людей часть из них бывает, а часть нет.
-    // Поэтому флаг только мягкий и уровень не снимает.
-    const spread = [];
+    // Поэтому флаг только мягкий и уровень не снимает. В деталях показаны самый высокий и самый низкий ответ темы.
+    const spread = [], spreadDetails = [];
     for (const cid of Object.keys(ND.CONSTRUCTS)) {
       const k = constructScore(cid, R, "now");
-      if (k.n >= 4 && k.sd > 0.33) spread.push(ND.CONSTRUCTS[cid].label);
+      if (!(k.n >= 4 && k.sd > 0.33)) continue;
+      spread.push(ND.CONSTRUCTS[cid].label);
+      const items = ND.ITEMS.filter((it) => it.c === cid && !it.rev && ND.eligible(it, R))
+        .map((it) => ({ it, sc: itemScore(it, R[it.id], "now") })).filter((x) => x.sc).sort((a, b) => b.sc.s - a.sc.s);
+      spreadDetails.push({ strength: "moderate", theme: ND.CONSTRUCTS[cid].label,
+        refs: [items[0], items[items.length - 1]].map((x) => ({ id: x.it.id, period: "now", fields: ["I"] })),
+        why: `Тема «${ND.CONSTRUCTS[cid].label}»: самый высокий и самый низкий ответ. Это не обязательно ошибка, вопросы описывают разные проявления, но стоит перечитать оба.` });
     }
     if (spread.length)
-      flags.push({ code: "spread", severity: "soft",
+      flags.push({ code: "spread", severity: "soft", details: spreadDetails,
         text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
 
-    // 4. Однообразие, скорость, «неприменимо»
+    // 6. Однообразие, скорость, «неприменимо»
     const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
       const counts = {};
@@ -188,15 +243,16 @@ ND.scoring = (function () {
       flags.push({ code: "speed", severity: "hard", text: "Ответы давались очень быстро (меньше 2 секунд на вопрос в среднем)." });
     const na = Object.values(R).filter((r) => r && r.na).length;
     if (na >= 10) flags.push({ code: "na", severity: "soft", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
+
+    // Степень согласованности: сколько сопоставлений ответов проверено и сколько из них противоречат.
+    // Разброс по темам сюда не входит, потому что он не противоречие в строгом смысле.
+    const conflicts = flags.filter((f) => ["pair", "inner", "spheres", "camo"].includes(f.code)).flatMap((f) => f.details);
     flags.pairsChecked = checkedPairs;
     flags.pairsBad = badPairs.length;
+    flags.summary = { checks, conflicts: conflicts.length, strong: conflicts.filter((d) => d.strength === "strong").length,
+      share: checks ? conflicts.length / checks : 0 };
     return flags;
   }
-  function short(id) {
-    const t = ND.ITEMS.find((x) => x.id === id).t;
-    return t.length > 60 ? t.slice(0, 57) + "…" : t;
-  }
-
   function differential(R) {
     const out = [];
     for (const it of ND.ITEMS.filter((x) => x.kind === "diff")) {
@@ -309,7 +365,11 @@ ND.scoring = (function () {
       if (!a.length && !b.length) return null;
       return (0.45 * (a.length ? mean(a) : 0) + 0.3 * (b.length ? mean(b) : 0)) / 0.75;
     };
-    let parts = [[0.75, coreOf("now") || 0], [0.1, imp]];
+    // Нарушения входят в индекс в той мере, в какой есть сами признаки: DSM-5-TR требует, чтобы трудности были вызваны
+    // симптомами. Без этого человек без признаков, но с тяжёлой депрессией, получал бы до 10–20 баллов только за нарушения.
+    const attributed = (x, c) => x * Math.min(1, c / P.thetaHi);
+    const asdNow = coreOf("now") || 0;
+    let parts = [[0.75, asdNow], [0.1, attributed(imp, asdNow)]];
     const childCore = coreOf("child");
     if (childCore != null) parts.push([0.15, childCore]);
     const asd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
@@ -320,7 +380,8 @@ ND.scoring = (function () {
     const partA = (p) => mean(ND.ASRS_PART_A.map((sid) => S[sid][p].s));
     const core = (p) => 0.7 * Math.max(top5("A1", p), top5("A2", p)) + 0.3 * partA(p);
     const childND = Object.keys(S).every((s) => S[s].child.status === ST.NODATA);
-    parts = [[0.6, core("now")], [0.2, Math.max(fMax != null ? fMax / 3 : 0, hAdhd.mean)]];
+    const adhdNow = core("now");
+    parts = [[0.6, adhdNow], [0.2, attributed(Math.max(fMax != null ? fMax / 3 : 0, hAdhd.mean), adhdNow)]];
     if (!childND) parts.push([0.2, core("child")]);
     const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
     return { asd, adhd };

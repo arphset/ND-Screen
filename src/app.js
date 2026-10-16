@@ -321,12 +321,14 @@
   function consistencyBlock(V) {
     const hard = V.some((f) => f.severity === "hard");
     const head = !V.length
-      ? `<div class="consist ok"><b>Ответы согласованы</b><span>Противоречий не найдено. Проверено ${V.pairsChecked || 0} пар вопросов с противоположным смыслом, ответы внутри каждого вопроса и разброс по темам.</span></div>`
+      ? `<div class="consist ok"><b>Ответы согласованы</b><span>Противоречий не найдено. Проверены пары вопросов с противоположным смыслом, ответы внутри каждого вопроса, связь отдельных вопросов с итоговыми и разброс по темам.</span></div>`
       : `<div class="consist ${hard ? "bad" : "warn"}"><b>${hard ? "У вас противоречивые ответы" : "В ответах есть отдельные противоречия"}</b><span>${hard
-          ? "Противоречий много, поэтому результат ненадёжный. Уровень «высокое соответствие» в таком случае не ставится. Лучше вернуться к вопросам ниже и проверить ответы."
-          : "Противоречий немного, на вывод они влияют слабо, но эти ответы стоит перепроверить."}</span></div>`;
+          ? "Противоречий много, поэтому результат ненадёжный. Уровень «высокое соответствие» в таком случае не ставится. Ниже показано, какие именно ответы расходятся: их можно открыть и исправить."
+          : "Противоречий немного, на вывод они влияют слабо. Ниже показано, какие именно ответы расходятся: их стоит перечитать."}</span></div>`;
+    const goto = !state.sample;
     return `<section class="block"><h2>Согласованность ответов</h2>${head}
-      ${V.map((f) => `<div class="flag"><span>${esc(f.text)}</span></div>`).join("")}</section>`;
+      <p class="small muted">${esc(ND.clinician.summaryLine(V))} Проверка не меняет баллы: противоречивые ответы не обнуляют друг друга, они только отмечаются здесь.</p>
+      ${V.map((f) => `<div class="flag"><span>${esc(f.text)}</span></div>${(f.details || []).map((d) => ND.clinician.conflictHtml(d, state.R, goto)).join("")}`).join("")}</section>`;
   }
 
   function modsBlock(E) {
@@ -379,7 +381,7 @@
       ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? ["Сильные стороны (не входят в индексы):", ...E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => `  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`)] : []),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
-      ...E.validity.map((f) => `  ${f.text}`),
+      ...E.validity.flatMap((f) => [`  ${f.text}`, ...(f.details || []).flatMap((d) => ND.clinician.conflictText(d, state.R).map((x) => "    " + x))]),
     ];
     return lines.join("\n");
   }
@@ -414,6 +416,7 @@
       case "sample": state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true }; render(); window.scrollTo(0, 0); return;
       case "home": if (state.sample) state = load() || fresh(); state.view = "intro"; save(); render(); return;
       case "report": state.view = "report"; save(); render(); window.scrollTo(0, 0); return;
+      case "goto": { const i = ITEMS.findIndex((x) => x.id === b.dataset.id); if (i < 0) return; state.view = "q"; state.idx = i; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return; }
       case "set": {
         const p = b.dataset.p, f = b.dataset.f, v = +b.dataset.v;
         r[p][f] = v; r[p].unknown = false;

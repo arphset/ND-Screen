@@ -28,6 +28,46 @@ ND.clinician = (function () {
     return parts.join(" · ");
   }
 
+  // Одна часть противоречия (см. scoring validity → details.refs): текст вопроса и выбранный ответ
+  function refAnswer(ref, R) {
+    const U = ND.UI, F = Object.fromEntries(U.F_OPTS), r = R[ref.id] || {};
+    const it = ND.ITEMS.find((x) => x.id === ref.id);
+    if (ref.fields.includes("spheres")) {
+      const sp = Object.entries(ND.LIFE_SPHERES).map(([f, l]) => { const x = R[f] && R[f].now; return x && x.D != null ? `${l.toLowerCase()}: ${U.D_LABELS[x.D].toLowerCase()}` : null; }).filter(Boolean);
+      return { q: "Итоговые вопросы «Влияние на жизнь»", a: sp.join("; ") };
+    }
+    const parts = [];
+    if (ref.fields.includes("I")) {
+      const one = (p) => { const x = r[p]; return x && x.I != null ? U.I_LABELS[x.I] + (x.F ? ", " + F[x.F].toLowerCase() : "") : "нет ответа"; };
+      const ps = ref.periods || [ref.period];
+      parts.push(ps.map((p) => (p === "child" ? "в детстве: " : "сейчас: ") + one(p)).join("; ").replace(/^./, (c) => c.toUpperCase()));
+    }
+    if (ref.fields.includes("harm")) parts.push("мешает: " + U.D_LABELS[r.harm || 0].replace("Не мешали", "не мешает").toLowerCase());
+    if (ref.fields.includes("mask")) parts.push("скрываю: " + U.MASK[r.mask || 0].toLowerCase());
+    return { q: it ? it.t : ref.id, a: parts.join(" · ") };
+  }
+
+  // Степень согласованности одной строкой
+  function summaryLine(V) {
+    const s = V.summary || { checks: 0, conflicts: 0, strong: 0 };
+    if (!s.checks) return "Сопоставлять пока нечего: ответов слишком мало.";
+    return `Проверено сопоставлений ответов: ${s.checks}. Противоречий: ${s.conflicts}` + (s.conflicts ? ` (${Math.round(s.share * 100)}%, из них сильных: ${s.strong}).` : ".");
+  }
+  const STRENGTH = { strong: "Сильное противоречие", moderate: "Противоречие" };
+  // Одно противоречие: вопросы с ответами и объяснение. goto — показать кнопку перехода к вопросу.
+  function conflictHtml(d, R, goto) {
+    const rows = d.refs.map((ref) => {
+      const x = refAnswer(ref, R);
+      const btn = goto && !ref.fields.includes("spheres") ? `<button class="btn ghost small no-print" data-act="goto" data-id="${esc(ref.id)}">Изменить ответ</button>` : "";
+      return `<li><span class="cq">${esc(x.q)}</span><span class="ca mono">${esc(x.a)}</span>${btn}</li>`;
+    }).join("");
+    const label = d.theme ? "Разброс" : STRENGTH[d.strength];
+    return `<div class="conflict ${d.strength}"><b>${label}</b><ul>${rows}</ul><p class="small muted">${esc(d.why)}</p></div>`;
+  }
+  function conflictText(d, R) {
+    return [...d.refs.map((ref) => { const x = refAnswer(ref, R); return `• ${x.q} → ${x.a}`; }), `  ${d.why}`];
+  }
+
   // Ответы, на которых держится оценка: открытые пункты набора с баллом от «вероятно» сейчас или в детстве
   function evidence(items, R, limit = 4) {
     const P = ND.PARAMS, sc = ND.scoring.itemScore;
@@ -142,8 +182,9 @@ ND.clinician = (function () {
     T.push("ПЕРЕСЧЁТ В ШКАЛЫ (оценка)", ...scales.map((x) => "  " + x), "");
 
     // Согласованность
-    h.push(`<section class="block"><h2>Согласованность ответов</h2>${E.validity.length ? E.validity.map((f) => `<div class="flag"><b>${f.severity === "hard" ? "Существенно" : "Незначительно"}</b><span>${esc(f.text)}</span></div>`).join("") : `<p>Противоречий не найдено (пар с противоположным смыслом: ${E.validity.pairsChecked || 0}).</p>`}</section>`);
-    T.push("СОГЛАСОВАННОСТЬ", ...(E.validity.length ? E.validity.map((f) => `  [${f.severity === "hard" ? "существенно" : "незначительно"}] ${f.text}`) : ["  противоречий не найдено"]), "");
+    const V = E.validity;
+    h.push(`<section class="block"><h2>Согласованность ответов</h2><p>${esc(summaryLine(V))}</p>${V.map((f) => `<div class="flag"><b>${f.severity === "hard" ? "Существенно" : "Незначительно"}</b><span>${esc(f.text)}</span></div>${(f.details || []).map((d) => conflictHtml(d, R)).join("")}`).join("")}</section>`);
+    T.push("СОГЛАСОВАННОСТЬ", "  " + summaryLine(V), ...V.flatMap((f) => [`  [${f.severity === "hard" ? "существенно" : "незначительно"}] ${f.text}`, ...(f.details || []).flatMap((d) => conflictText(d, R).map((x) => "    " + x))]), "");
 
     // Темы для интервью
     const scored = opened.filter((it) => !it.rev && !it.kind && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I >= 2);
@@ -190,5 +231,5 @@ ND.clinician = (function () {
     return { html: h.join("\n"), text: T.join("\n") };
   }
 
-  return { build, answerLine, evidence };
+  return { build, answerLine, evidence, refAnswer, conflictHtml, conflictText, summaryLine };
 })();
