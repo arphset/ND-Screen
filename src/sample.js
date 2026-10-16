@@ -29,6 +29,12 @@ ND.sampleResponses = function () {
   set(["MO-1"], () => t(2, "some", 3, "often"));
   set(["EX-1", "EX-2", "EX-3"], (i) => t([2, 4, 3][i], "often", [3, 4, 2][i], "often"));
   set(["DF-1", "DF-2", "DF-3", "DF-4", "DF-5", "DF-6"], (i) => t([3, 1, 2, 0, 0, 2][i], "often", [1, 1, 1, 0, 0, 1][i], "rare"));
+  // обратные вопросы: зеркально к своей паре
+  ND.ITEMS.forEach((it) => {
+    if (!it.rev || R[it.id] || !R[it.pair]) return;
+    const m = (p) => (p && p.I != null ? { I: 4 - p.I } : { unknown: true });
+    R[it.id] = { now: m(R[it.pair].now), child: m(R[it.pair].child), rt: 6000 };
+  });
   // уточняющие вопросы: ответ чуть слабее основного вопроса группы
   ND.ITEMS.forEach((it, k) => {
     if (!it.fu || R[it.id] || !ND.eligible(it, R)) return;

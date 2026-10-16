@@ -153,5 +153,67 @@ for (let k = 0; k < 300; k++) {
   check("общий вывод: оба", ND.scoring.overall(ev(both)).code === "both", ND.scoring.overall(ev(both)));
 }
 
+// ── 8. Согласованность ответов на случайных профилях ──
+{
+  const hard = (E) => E.validity.some((f) => f.severity === "hard");
+  const has = (E, code) => E.validity.some((f) => f.code === code);
+  // согласованный профиль: у каждой темы свой уровень, ответы близко к нему, обратные вопросы зеркальны
+  function consistent() {
+    const lvl = {}, R = {};
+    const L = (g) => (lvl[g] ??= Math.floor(rnd() * 5));
+    for (const it of ITEMS) {
+      if (it.rev) continue;
+      if (it.kind === "func") { const d = Math.floor(rnd() * 4); R[it.id] = { now: { D: d }, child: { D: d } }; continue; }
+      const g = ND.groupOf(it) || it.d;
+      const mk = () => { const I = Math.max(0, Math.min(4, L(g) + pick([-1, 0, 0, 0, 0, 1]))); return I >= 2 ? { I, F: pick(FREQ) } : { I }; };
+      const now = mk(), child = mk();
+      R[it.id] = { now, child, rt: 5000, harm: now.I >= 2 ? pick([0, 1, 2, 3]) : 0, mask: now.I >= 1 ? pick([0, 1, 2]) : 0, ctx: now.I >= 1 ? [pick(["home", "work"])] : [] };
+    }
+    for (const it of ITEMS.filter((x) => x.rev)) {
+      const b = R[it.pair];
+      R[it.id] = { now: { I: 4 - b.now.I }, child: { I: 4 - b.child.I }, rt: 5000 };
+    }
+    return R;
+  }
+  function noise() {
+    const R = {};
+    for (const it of ITEMS) {
+      if (it.kind === "func") { R[it.id] = { now: { D: Math.floor(rnd() * 4) }, child: { D: Math.floor(rnd() * 4) } }; continue; }
+      const mk = () => { const I = Math.floor(rnd() * 5); return I >= 2 ? { I, F: pick(FREQ) } : { I }; };
+      R[it.id] = { now: mk(), child: mk(), rt: 5000, harm: Math.floor(rnd() * 4), mask: Math.floor(rnd() * 3), ctx: rnd() < 0.5 ? ["home"] : [] };
+    }
+    return R;
+  }
+  let consHard = 0, consPair = 0, noiseHard = 0;
+  const N = 300;
+  for (let k = 0; k < N; k++) {
+    const E = ev(consistent());
+    if (hard(E)) consHard++;
+    if (has(E, "pair")) consPair++;
+    if (hard(ev(noise()))) noiseHard++;
+  }
+  console.log(`  согласованные профили: жёсткий флаг в ${consHard}/${N}, флаг пар в ${consPair}/${N}; случайный шум: жёсткий флаг в ${noiseHard}/${N}`);
+  check("согласованные профили почти не получают жёсткий флаг (≤5%)", consHard <= N * 0.05, consHard);
+  check("зеркальные обратные пары никогда не дают флаг пар", consPair === 0, consPair);
+  check("случайный шум почти всегда получает жёсткий флаг (≥90%)", noiseHard >= N * 0.9, noiseHard);
+
+  // подложенные противоречия
+  const R1 = consistent();
+  const revs = ITEMS.filter((x) => x.rev).slice(0, 3);
+  for (const it of revs) { R1[it.pair].now = { I: 4, F: "often" }; R1[it.id].now = { I: 4 }; }
+  const E1 = ev(R1);
+  check("3 противоречивые пары → жёсткий флаг пар", E1.validity.some((f) => f.code === "pair" && f.severity === "hard"), E1.validity);
+  check("противоречия снимают уровень «высокое»", E1.asd.level !== "high" && E1.adhd.level !== "high");
+  check("в общем выводе сказано о противоречиях", /противореч/.test(ND.scoring.overall(E1).text), ND.scoring.overall(E1).text);
+
+  const R2 = consistent();
+  ITEMS.filter((x) => !x.rev && !x.kind && !x.fu).slice(0, 5).forEach((it) => { R2[it.id].now = { I: 0 }; R2[it.id].harm = 3; });
+  check("5 ответов «совсем нет, но мешает сильно» → жёсткий флаг", ev(R2).validity.some((f) => f.code === "inner" && f.severity === "hard"), ev(R2).validity);
+
+  const R3 = consistent();
+  const one = ITEMS.find((x) => x.id === "A1-1"); R3[one.id].now = { I: 0 }; R3[one.id].harm = 3;
+  check("одна такая ошибка → только мягкое предупреждение", !ev(R3).validity.some((f) => f.code === "inner" && f.severity === "hard"));
+}
+
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);

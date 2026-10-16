@@ -219,8 +219,9 @@
           ])}
         </div>
 
-        ${E.validity.length || E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
-          ${E.validity.map((f) => `<div class="flag"><b>Надёжность ответов</b><span>${esc(f.text)}</span></div>`).join("")}
+        ${consistencyBlock(E.validity)}
+
+        ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
         </section>` : ""}
 
@@ -271,6 +272,17 @@
       <p>${desc}</p><ul class="small muted stack" style="margin:0;padding-left:1.1em;gap:4px">${lines.filter(Boolean).map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
   }
 
+  function consistencyBlock(V) {
+    const hard = V.some((f) => f.severity === "hard");
+    const head = !V.length
+      ? `<div class="consist ok"><b>Ответы согласованы</b><span>Противоречий не найдено. Проверено ${V.pairsChecked || 0} пар вопросов с противоположным смыслом, ответы внутри каждого вопроса и разброс по темам.</span></div>`
+      : `<div class="consist ${hard ? "bad" : "warn"}"><b>${hard ? "У вас противоречивые ответы" : "В ответах есть отдельные противоречия"}</b><span>${hard
+          ? "Противоречий много, поэтому результат ненадёжный. Уровень «высокое соответствие» в таком случае не ставится. Лучше вернуться к вопросам ниже и проверить ответы."
+          : "Противоречий немного, на вывод они влияют слабо, но эти ответы стоит перепроверить."}</span></div>`;
+    return `<section class="block"><h2>Согласованность ответов</h2>${head}
+      ${V.map((f) => `<div class="flag"><span>${esc(f.text)}</span></div>`).join("")}</section>`;
+  }
+
   function modsBlock(E) {
     const rows = ["CAMO", "DETAIL", "MOTOR", "EXEC", "BURNOUT"].map((cid) => {
       const k = E.constructs[cid];
@@ -319,7 +331,8 @@
       `СДВГ: ${L(E.adhd.level)}, индекс ${E.adhd.index}/100. A1 ${E.adhd.nA1}/9, A2 ${E.adhd.nA2}/9, до 12 лет ${E.adhd.nChild} симптомов${E.adhd.presentation ? ", " + E.adhd.presentation : ""}.`,
       legacyText(E.legacy),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
-      ...E.validity.map((f) => `Надёжность: ${f.text}`),
+      E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
+      ...E.validity.map((f) => `  ${f.text}`),
     ];
     return lines.join("\n");
   }

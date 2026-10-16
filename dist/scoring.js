@@ -115,27 +115,73 @@ ND.scoring = (function () {
     return set;
   }
 
-  // L3c: валидность
+  // L3c: согласованность и надёжность ответов.
+  // Каждый флаг: { code, severity: "hard" | "soft", text, items? }. «hard» снимает уровень «высокое соответствие».
   function validity(R) {
     const flags = [];
-    for (const it of ND.ITEMS.filter((x) => x.rev)) {
-      const a = R[it.id], b = R[it.pair];
-      if (a && b && !a.na && !b.na && a.now && b.now && a.now.I != null && b.now.I != null) {
-        if (Math.abs(b.now.I - (4 - a.now.I)) >= 3)
-          flags.push({ code: "pair", text: `Противоречат друг другу ответы на вопросы «${short(it.pair)}» и «${short(it.id)}».` });
+    const ans = (id) => { const r = R[id]; return r && !r.na ? r : null; };
+
+    // 1. Обратные пары: «да» на прямой и «да» на обратный вопрос (или «нет» на оба), по каждому периоду
+    const pairs = ND.ITEMS.filter((x) => x.rev);
+    const badPairs = [];
+    let checkedPairs = 0;
+    for (const it of pairs) {
+      const a = ans(it.id), b = ans(it.pair);
+      if (!a || !b) continue;
+      let checked = false, bad = false;
+      for (const p of ND.PERIODS) {
+        if (!a[p] || !b[p] || a[p].I == null || b[p].I == null) continue;
+        checked = true;
+        if (Math.abs(b[p].I - (4 - a[p].I)) >= 3) bad = true;
       }
+      if (checked) checkedPairs++;
+      if (bad) badPairs.push([it.pair, it.id]);
     }
+    if (badPairs.length)
+      flags.push({ code: "pair", severity: badPairs.length >= 2 ? "hard" : "soft", items: badPairs.flat(),
+        text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом: ` +
+          badPairs.slice(0, 3).map(([x, y]) => `«${short(x)}» и «${short(y)}»`).join("; ") + (badPairs.length > 3 ? ` и ещё ${badPairs.length - 3}` : "") + "." });
+
+    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно», «полностью скрываю» или указаны места
+    const inner = [];
+    for (const it of ND.ITEMS.filter((x) => !x.rev && !x.kind && ND.eligible(x, R))) {
+      const r = ans(it.id);
+      if (!r || !r.now || r.now.I !== 0) continue;
+      const why = [];
+      if (r.harm >= 2) why.push("мешает");
+      if (r.mask === 2) why.push("скрываю");
+      if (r.ctx && r.ctx.length) why.push("указано, где проявляется");
+      if (why.length) inner.push({ id: it.id, why });
+    }
+    if (inner.length)
+      flags.push({ code: "inner", severity: inner.length >= 5 ? "hard" : "soft", items: inner.map((x) => x.id),
+        text: `В ${inner.length} ответах выбрано «совсем нет», но при этом отмечено, что признак мешает, скрывается или где-то проявляется` +
+          (inner.length <= 3 ? `: ${inner.map((x) => `«${short(x.id)}»`).join("; ")}` : "") + "." });
+
+    // 3. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы
+    const spread = [];
+    for (const cid of Object.keys(ND.CONSTRUCTS)) {
+      const k = constructScore(cid, R, "now");
+      if (k.n >= 4 && k.sd > 0.33) spread.push(ND.CONSTRUCTS[cid].label);
+    }
+    if (spread.length)
+      flags.push({ code: "spread", severity: spread.length >= 3 ? "hard" : "soft",
+        text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
+
+    // 4. Однообразие, скорость, «неприменимо»
     const Is = ND.ITEMS.filter((x) => x.kind !== "func").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
       const counts = {};
       Is.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
-      if (Math.max(...Object.values(counts)) / Is.length > 0.8) flags.push({ code: "straight", text: "Больше 80% ответов одинаковые. Возможно, анкета заполнялась не вчитываясь." });
+      if (Math.max(...Object.values(counts)) / Is.length > 0.8) flags.push({ code: "straight", severity: "hard", text: "Больше 80% ответов одинаковые. Возможно, анкета заполнялась не вчитываясь." });
     }
     const rts = Object.values(R).map((r) => r && r.rt).filter((x) => x > 0).sort((a, b) => a - b);
     if (rts.length >= 20 && rts[Math.floor(rts.length / 2)] < 2000)
-      flags.push({ code: "speed", text: "Ответы давались очень быстро (меньше 2 секунд на вопрос в среднем)." });
+      flags.push({ code: "speed", severity: "hard", text: "Ответы давались очень быстро (меньше 2 секунд на вопрос в среднем)." });
     const na = Object.values(R).filter((r) => r && r.na).length;
-    if (na >= 10) flags.push({ code: "na", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
+    if (na >= 10) flags.push({ code: "na", severity: "soft", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
+    flags.pairsChecked = checkedPairs;
+    flags.pairsBad = badPairs.length;
     return flags;
   }
   function short(id) {
@@ -301,7 +347,7 @@ ND.scoring = (function () {
     else if (nA2 >= P.adhdAdult) presentation = "преимущественно гиперактивно-импульсивная";
 
     // ── L4 ──
-    const validOk = valid.length === 0;
+    const validOk = !valid.some((f) => f.severity === "hard");
     function level(core, others, anyTrait) {
       if (core === ST.MET && others.every((x) => x === ST.MET) && validOk) return "high";
       if (atLeastProb(core) && others.every(atLeastProb)) return "partial";
@@ -347,7 +393,8 @@ ND.scoring = (function () {
       text = "Ответы не соответствуют критериям ни РАС, ни СДВГ, выраженных черт тоже нет.";
     }
     if (flags && code !== "both") text += " Отмеченные ниже состояния стоит обсудить со специалистом отдельно.";
-    if (E.validity.length) text += " Есть замечания к надёжности ответов, вывод менее уверенный.";
+    if (E.validity.some((f) => f.severity === "hard")) text += " Ответы местами противоречат друг другу, поэтому вывод ненадёжный: см. блок «Согласованность ответов».";
+    else if (E.validity.length) text += " В ответах есть отдельные противоречия, см. блок «Согласованность ответов».";
     return { code, title, text };
   }
 

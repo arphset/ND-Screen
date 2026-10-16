@@ -151,3 +151,8 @@ pre.copybox { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0
 .overall { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 18px 20px; display: grid; gap: 8px; }
 .overall.nt { border-left-color: var(--muted); }
 .overall h2 { font-size: 1.5rem; }
+.consist { display: grid; gap: 4px; padding: 12px 16px; border-radius: 8px; border: 1px solid var(--line); background: var(--surface); }
+.consist b { font-family: var(--font-display); font-size: 1.05rem; }
+.consist.ok { border-left: 4px solid var(--accent); }
+.consist.warn { border-left: 4px solid var(--warn); }
+.consist.bad { border-left: 4px solid var(--warn); background: var(--warn-soft); }
