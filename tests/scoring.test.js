@@ -290,7 +290,7 @@ for (let k = 0; k < 300; k++) {
   for (const it of ITEMS.filter((x) => !x.rev && !x.kind && !x.fu)) R2[it.id] = { now: { I: 0 }, child: { I: 0 }, ctx: ["home", "work"], harm: 0 };
   check("«совсем нет» с отмеченными местами не даёт флаг противоречия", !ev(R2).validity.some((f) => f.code === "inner"), ev(R2).validity);
   // разброс внутри темы — только мягкий
-  check("разброс внутри темы никогда не снимает уровень", ITEMS.length && !ev(R).validity.some((f) => f.code === "spread" && f.severity === "hard"));
+  check("разброс внутри темы не считается противоречием", !ev(R).validity.some((f) => f.code === "spread"));
 }
 
 // ── v0.5: какие ответы противоречат, уточняющие вопросы, нарушения без признаков ──

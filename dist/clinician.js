@@ -61,7 +61,7 @@ ND.clinician = (function () {
       const btn = goto && !ref.fields.includes("spheres") ? `<button class="btn ghost small no-print" data-act="goto" data-id="${esc(ref.id)}">Изменить ответ</button>` : "";
       return `<li><span class="cq">${esc(x.q)}</span><span class="ca mono">${esc(x.a)}</span>${btn}</li>`;
     }).join("");
-    const label = d.theme ? "Разброс" : STRENGTH[d.strength];
+    const label = STRENGTH[d.strength];
     return `<div class="conflict ${d.strength}"><b>${label}</b><ul>${rows}</ul><p class="small muted">${esc(d.why)}</p></div>`;
   }
   function conflictText(d, R) {

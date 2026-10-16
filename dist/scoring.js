@@ -213,23 +213,8 @@ ND.scoring = (function () {
       }
     }
 
-    // 5. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы.
-    // Это не противоречие: вопросы одной темы описывают разные проявления, и у живых людей часть из них бывает, а часть нет.
-    // Поэтому флаг только мягкий и уровень не снимает. В деталях показаны самый высокий и самый низкий ответ темы.
-    const spread = [], spreadDetails = [];
-    for (const cid of Object.keys(ND.CONSTRUCTS)) {
-      const k = constructScore(cid, R, "now");
-      if (!(k.n >= 4 && k.sd > 0.33)) continue;
-      spread.push(ND.CONSTRUCTS[cid].label);
-      const items = ND.ITEMS.filter((it) => it.c === cid && !it.rev && ND.eligible(it, R))
-        .map((it) => ({ it, sc: itemScore(it, R[it.id], "now") })).filter((x) => x.sc).sort((a, b) => b.sc.s - a.sc.s);
-      spreadDetails.push({ strength: "moderate", theme: ND.CONSTRUCTS[cid].label,
-        refs: [items[0], items[items.length - 1]].map((x) => ({ id: x.it.id, period: "now", fields: ["I"] })),
-        why: `Тема «${ND.CONSTRUCTS[cid].label}»: самый высокий и самый низкий ответ. Это не обязательно ошибка, вопросы описывают разные проявления, но стоит перечитать оба.` });
-    }
-    if (spread.length)
-      flags.push({ code: "spread", severity: "soft", details: spreadDetails,
-        text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
+    // 5. Разброса внутри темы больше нет (v0.8.1): вопросы одной темы описывают разные проявления
+    // (например, стимминг и интерес к вращающимся предметам), и разные ответы на них — не противоречие.
 
     // 6. Однообразие, скорость, «неприменимо»
     // шкалы (PHQ-9, GAD-7, PAQ, ABSI) и сопутствующие состояния в проверку согласованности не входят
@@ -248,7 +233,6 @@ ND.scoring = (function () {
     if (na >= 10) flags.push({ code: "na", severity: "soft", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
 
     // Степень согласованности: сколько сопоставлений ответов проверено и сколько из них противоречат.
-    // Разброс по темам сюда не входит, потому что он не противоречие в строгом смысле.
     const conflicts = flags.filter((f) => ["pair", "inner", "spheres", "camo"].includes(f.code)).flatMap((f) => f.details);
     flags.pairsChecked = checkedPairs;
     flags.pairsBad = badPairs.length;
