@@ -346,6 +346,13 @@ for (let k = 0; k < 300; k++) {
   for (let k = 0; k < 50; k++) { const R = profile(() => Math.floor(rnd() * 5)); try { ND.support(ev(R), R); } catch (e) { check("подбор советов без ошибок", false, e.message); break; } }
 }
 
+// ── Поле «Видно ли это со стороны?» убрано у 37 вопросов ──
+{
+  check("поле маскировки убрано у 37 вопросов", ND.NO_MASK.size === 37 && [...ND.NO_MASK].every((id) => ITEMS.some((x) => x.id === id && x.noMask)), ND.NO_MASK.size);
+  const it = ITEMS.find((x) => x.id === "B4-5"), r = { now: { I: 2, F: "some" }, child: { I: 2 }, mask: 2 };
+  check("старый ответ «скрываю» у такого вопроса не даёт поправки", ND.scoring.itemScore(it, r, "now").s === ND.scoring.itemScore(it, { ...r, mask: 0 }, "now").s);
+}
+
 // ── Пояснения к вопросам ──
 for (const it of ITEMS) {
   const h = ND.HINTS[it.id];

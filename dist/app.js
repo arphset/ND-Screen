@@ -113,8 +113,8 @@
     return `<div class="extras">
         <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
           `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}</div></div>
-        <div class="sub"><span class="sub-label">Видно ли это со стороны? <span class="muted">Например, замечают ли другие, что вам трудно, или вы это прикрываете. Если к вопросу не подходит, пропустите.</span></span><div class="chips">${MASK.map((l, i) =>
-          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}</div></div>
+${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли это со стороны? <span class="muted">Например, замечают ли другие, что вам трудно, или вы это прикрываете. Если к вопросу не подходит, пропустите.</span></span><div class="chips">${MASK.map((l, i) =>
+          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}</div></div>`}
         <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
           `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}</div></div>
         ${unsure}

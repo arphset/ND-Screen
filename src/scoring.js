@@ -54,7 +54,7 @@ ND.scoring = (function () {
     let s = In * (0.5 + 0.5 * Fn);
     // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует.
     // Вопрос «скрываете ли вы» задан про настоящее, поэтому к ответам о детстве поправка не применяется.
-    const m = period === "now" ? r.mask || 0 : 0;
+    const m = period === "now" && !item.noMask ? r.mask || 0 : 0;
     if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s) * In;
     const band = r.unsure ? P.unsureBand : 0;
     return { s, lo: Math.max(0, s - band), hi: Math.min(1, s + band) };
@@ -178,7 +178,7 @@ ND.scoring = (function () {
       checks++;
       const fields = ["I"], why = [];
       if (r.harm >= 2) { fields.push("harm"); why.push("что он мешает"); }
-      if (r.mask === 2) { fields.push("mask"); why.push("что вы его полностью скрываете"); }
+      if (r.mask === 2 && !it.noMask) { fields.push("mask"); why.push("что вы его полностью скрываете"); }
       if (why.length) inner.push({ strength: r.harm === 3 || why.length === 2 ? "strong" : "moderate", refs: [{ id: it.id, period: "now", fields }],
         why: `Выбрано «совсем нет», то есть признака нет, но при этом отмечено, ${why.join(" и ")}. Одно из двух, скорее всего, отмечено по ошибке.` });
     }
