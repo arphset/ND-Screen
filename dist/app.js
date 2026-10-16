@@ -8,7 +8,7 @@
   const F_OPTS = [["rare", "Редко"], ["some", "Иногда"], ["often", "Часто"], ["always", "Почти всегда"]];
   const D_LABELS = ["Не мешали", "Немного", "Заметно", "Сильно"];
   const CTX = [["home", "Дома"], ["work", "Работа или учёба"], ["friends", "С друзьями"], ["strangers", "С незнакомыми"], ["alone", "Наедине с собой"]];
-  const MASK = ["Нет, это видно", "Частично сдерживаю", "Полностью скрываю, с усилием"];
+  const MASK = ["Да, видно", "Отчасти прячу", "Не видно, скрываю с усилием"];
   const PERIOD_LABEL = { now: "Сейчас, во взрослой жизни", child: "В детстве, до 12 лет" };
   const ST_LABEL = { met: "выполнен", probable: "вероятно", no: "нет", nodata: "нет данных" };
   const LEVEL = {
@@ -113,7 +113,7 @@
     return `<div class="extras">
         <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
           `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}</div></div>
-        <div class="sub"><span class="sub-label">Скрываете ли вы это от окружающих?</span><div class="chips">${MASK.map((l, i) =>
+        <div class="sub"><span class="sub-label">Видно ли это со стороны? <span class="muted">Например, замечают ли другие, что вам трудно, или вы это прикрываете. Если к вопросу не подходит, пропустите.</span></span><div class="chips">${MASK.map((l, i) =>
           `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}</div></div>
         <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
           `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}</div></div>

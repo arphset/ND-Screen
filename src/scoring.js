@@ -168,7 +168,7 @@ ND.scoring = (function () {
       flags.push({ code: "pair", severity: badPairs.length >= 2 ? "hard" : "soft", items: badPairs.flat(), details: pairDetails,
         text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом.` });
 
-    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно» или «полностью скрываю».
+    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно» или «не видно, скрываю с усилием».
     // Отмеченные места при «совсем нет» не считаются противоречием: люди часто отмечают, где бывает сама ситуация,
     // а в подсчёт места при таком ответе и так не попадают.
     const inner = [];
@@ -199,7 +199,7 @@ ND.scoring = (function () {
             why: "Если отдельные особенности заметно мешают, это обычно видно хотя бы в одной сфере: работе, отношениях, быту или самооценке." }] });
     }
 
-    // 4. Камуфляж: в вопросах о маскировке почти везде «нет», но в вопросах об общении многое «полностью скрываю, с усилием».
+    // 4. Камуфляж: в вопросах о маскировке почти везде «нет», но в вопросах об общении многое «не видно, скрываю с усилием».
     const camo = constructScore("CAMO", R, "now");
     const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 1 && r.mask === 2; });
     if (camo.n >= 3) {
@@ -207,7 +207,7 @@ ND.scoring = (function () {
       if (camo.s < 0.25 && hidden.length >= 4) {
         const camoItems = ND.ITEMS.filter((it) => it.c === "CAMO" && !it.fu).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I != null && r.now.I <= 1; });
         flags.push({ code: "camo", severity: "soft", items: [...hidden.map((x) => x.id), ...camoItems.map((x) => x.id)],
-          text: `${plural(hidden.length, "В {n} вопросе", "В {n} вопросах", "В {n} вопросах")} об общении отмечено «полностью скрываю, с усилием», а в вопросах о маскировке в основном «нет».`,
+          text: `${plural(hidden.length, "В {n} вопросе", "В {n} вопросах", "В {n} вопросах")} об общении отмечено «не видно, скрываю с усилием», а в вопросах о маскировке в основном «нет».`,
           details: [{ strength: "moderate", refs: [...hidden.slice(0, 3).map((it) => ({ id: it.id, period: "now", fields: ["I", "mask"] })), ...camoItems.slice(0, 2).map((it) => ({ id: it.id, period: "now", fields: ["I"] }))],
             why: "Сильное сокрытие признаков в общении и есть маскировка, поэтому ответы в блоке о маскировке обычно тоже выше." }] });
       }

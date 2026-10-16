@@ -43,7 +43,7 @@ ND.clinician = (function () {
       parts.push(ps.map((p) => (p === "child" ? "в детстве: " : "сейчас: ") + one(p)).join("; ").replace(/^./, (c) => c.toUpperCase()));
     }
     if (ref.fields.includes("harm")) parts.push("мешает: " + U.D_LABELS[r.harm || 0].replace("Не мешали", "не мешает").toLowerCase());
-    if (ref.fields.includes("mask")) parts.push("скрываю: " + U.MASK[r.mask || 0].toLowerCase());
+    if (ref.fields.includes("mask")) parts.push("видно ли со стороны: " + U.MASK[r.mask || 0].toLowerCase());
     return { q: it ? it.t : ref.id, a: parts.join(" · ") };
   }
 
