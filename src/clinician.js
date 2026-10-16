@@ -82,10 +82,18 @@ ND.clinician = (function () {
       .slice(0, limit);
   }
 
+  // Одна строка о шкале: сумма и степень (PHQ-9, GAD-7, PAQ) или средний балл без порогов (ABSI)
+  function scaleLine(x, short) {
+    const head = short ? "" : `${x.name}: `;
+    if (x.mean) return head + `средний балл ${String(x.score).replace(".", ",")} из 7 (выше — тяжелее, порогов нет)`;
+    return head + (short ? `${x.score}/${x.max}` : `${x.score} из ${x.max}`) + `, ${x.band} степень`;
+  }
+
   function build(R) {
     const U = ND.UI, E = ND.scoring.evaluate(R), O = ND.scoring.overall(E), ST = U.ST_LABEL;
     const C = E.constructs, S = E.symptoms, asd = E.asd, adhd = E.adhd;
     const sc = Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.answered);
+    const co = ND.ITEMS.filter((it) => it.kind === "comorb" && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I === 0);
     const opened = ND.ITEMS.filter((it) => ND.eligible(it, R));
     const answered = opened.filter((it) => R[it.id] && (R[it.id].na || (R[it.id].now && (R[it.id].now.I != null || R[it.id].now.D != null || R[it.id].now.unknown)))).length;
     const hard = E.validity.some((f) => f.severity === "hard");
@@ -107,15 +115,17 @@ ND.clinician = (function () {
       <tr><td>СДВГ</td><td>${L(adhd.level)}, индекс ${adhd.index}/100${adhd.indexRaw > adhd.index ? ` (ограничен; без ограничения ${adhd.indexRaw})` : ""}${adhd.presentation ? `, ${adhd.presentation}` : ""}</td></tr>
       <tr><td>Согласованность</td><td>${consist} (проверено пар: ${E.validity.pairsChecked || 0})</td></tr>
       <tr><td>Камуфляж</td><td>${pct(C.CAMO.now.s)}/100; CAT-Q (пересчёт) ${r0(E.legacy.CATQ.total)}/175</td></tr>
-      ${sc.map((x) => `<tr><td>${x.name}</td><td>${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : `${x.score}/${x.max}, ${x.band} степень`}</td></tr>`).join("")}
+      ${sc.map((x) => `<tr><td>${x.name}</td><td>${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : esc(scaleLine(x, true))}</td></tr>`).join("")}
       ${E.scales.safety ? `<tr><td><b>PHQ-9, пункт 9</b></td><td><b>Отмечены мысли о смерти или самоповреждении: требуется оценка риска</b></td></tr>` : ""}
+      ${co.length ? `<tr><td>Сопутствующие состояния (со слов)</td><td>${co.map((it) => esc(it.t.replace(/\.$/, ""))).join("; ")}</td></tr>` : ""}
       <tr><td>Дифференциальные флаги</td><td>${E.differential.length ? E.differential.map((d) => esc(d.label) + (d.lateOnset ? " (начало не в детстве)" : "")).join("; ") : "нет"}</td></tr>
     </tbody></table></div></section>`);
     T.push("СВОДКА", `Общий вывод: ${O.title}`, `РАС: ${L(asd.level)}, индекс ${asd.index}/100`,
       `СДВГ: ${L(adhd.level)}, индекс ${adhd.index}/100${adhd.presentation ? ", " + adhd.presentation : ""}`,
       `Согласованность: ${consist}`, `Камуфляж: ${pct(C.CAMO.now.s)}/100`,
-      ...sc.map((x) => `${x.name}: ${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : `${x.score}/${x.max}, ${x.band} степень`}`),
+      ...sc.map((x) => `${x.name}: ${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : scaleLine(x, true)}`),
       ...(E.scales.safety ? ["PHQ-9, пункт 9: отмечены мысли о смерти или самоповреждении, требуется оценка риска"] : []),
+      ...(co.length ? [`Сопутствующие состояния (со слов): ${co.map((it) => it.t.replace(/\.$/, "")).join("; ")}`] : []),
       `Дифференциальные флаги: ${E.differential.length ? E.differential.map((d) => d.label).join("; ") : "нет"}`, "");
 
     const evList = (items) => {
@@ -236,5 +246,5 @@ ND.clinician = (function () {
     return { html: h.join("\n"), text: T.join("\n") };
   }
 
-  return { build, answerLine, evidence, refAnswer, conflictHtml, conflictText, summaryLine };
+  return { build, scaleLine, answerLine, evidence, refAnswer, conflictHtml, conflictText, summaryLine };
 })();

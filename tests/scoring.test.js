@@ -21,6 +21,7 @@ for (const it of ITEMS) {
   if (it.kind === "func") { check(`${it.id}: сфера жизни`, !!ND.LIFE_SPHERES[it.f]); continue; }
   if (it.kind === "diff") { check(`${it.id}: флаг`, !!ND.DIFF_LABELS[it.d]); continue; }
   if (it.kind === "scale") { check(`${it.id}: шкала`, !!ND.SCALES[it.scale] && !it.c && !it.s && !it.src); continue; }
+  if (it.kind === "comorb") { check(`${it.id}: сопутствующее состояние с данными и источником`, !it.c && !it.s && !it.src && it.co.length > 0 && it.co.every((c) => /\(.*\d{4}/.test(c.t)) && ["strong", "moderate", "weak"].includes(it.conf)); continue; }
   if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
@@ -376,6 +377,46 @@ for (let k = 0; k < 300; k++) {
     tot++; if (JSON.stringify([a.asd, a.adhd, a.constructs, a.symptoms, a.validity, a.legacy]) === JSON.stringify([c.asd, c.adhd, c.constructs, c.symptoms, c.validity, c.legacy])) same++;
   }
   check("ответы PHQ-9 и GAD-7 не меняют РАС, СДВГ, согласованность и пересчёт в тесты", same === tot, `${same}/${tot}`);
+}
+
+// ── PAQ и ABSI ──
+{
+  const sc = (id) => ITEMS.filter((x) => x.scale === id && !x.fx && !x.gate);
+  const paq = (v) => { const R = {}; sc("PAQ").forEach((it) => (R[it.id] = { now: { I: v } })); return R; };
+  const absi = (g, v) => { const R = { "ABSI-0": { now: { I: g } } }; sc("ABSI").forEach((it) => (R[it.id] = { now: { I: v } })); return R; };
+  check("PAQ: 24 пункта, ABSI: 20 пунктов и вход", sc("PAQ").length === 24 && sc("ABSI").length === 20 && ITEMS.some((x) => x.id === "ABSI-0" && x.gate));
+  const lo = ND.scoring.scales(paq(0)).PAQ, hi = ND.scoring.scales(paq(6)).PAQ;
+  check("PAQ: минимум 24, максимум 168, границы по нормам", lo.score === 24 && lo.band === "низкая" && hi.score === 168 && hi.band === "высокая" && hi.positive && !lo.positive);
+  check("PAQ: подшкалы по ключу (N-DIF 2, 8, 14, 20)", (() => { const R = paq(0); [2, 8, 14, 20].forEach((n) => (R[`PAQ-${n}`] = { now: { I: 6 } })); const x = ND.scoring.scales(R).PAQ; return x.subs.NDIF.score === 28 && x.subs.PDIF.score === 4 && x.score === 48; })());
+  check("PAQ 112 — средняя, 113 — высокая", (() => { const R = paq(3); const a = ND.scoring.scales(R).PAQ.score; R["PAQ-1"] = { now: { I: 6 } }; R["PAQ-2"] = { now: { I: 6 } }; R["PAQ-3"] = { now: { I: 6 } }; R["PAQ-4"] = { now: { I: 6 } }; R["PAQ-5"] = { now: { I: 6 } }; R["PAQ-6"] = { now: { I: 6 } }; R["PAQ-7"] = { now: { I: 6 } }; R["PAQ-8"] = { now: { I: 6 } }; const b = ND.scoring.scales(R).PAQ; return a === 96 && b.score === 120 && b.band === "высокая"; })());
+  const Ea = ev(paq(6));
+  check("высокая алекситимия → флаг и пояснение к A1", Ea.differential.some((d) => d.d === "alexithymia") && ND.explain.construct("ASD.A1", Ea, paq(6)).some((w) => w.period === "note") && !ND.explain.construct("ASD.B1", Ea, paq(6)).some((w) => w.period === "note"));
+  check("ABSI: при ответе «нет» вопросы закрыты и балла нет", !ND.eligible(ITEMS.find((x) => x.id === "ABSI-1"), absi(1, 6)) && ND.scoring.scales(absi(1, 6)).ABSI.score === null && ND.scoring.scales(absi(1, 6)).ABSI.answered === 0);
+  check("ABSI: среднее 1–7, «не уверен(а)» тоже открывает", ND.scoring.scales(absi(0, 6)).ABSI.score === 7 && ND.scoring.scales(absi(2, 0)).ABSI.score === 1 && ND.scoring.scales(absi(0, 3)).ABSI.subs.COG.score === 4);
+  check("ABSI: два пропуска — балл есть, три — нет", (() => { const R = absi(0, 4); delete R["ABSI-1"]; delete R["ABSI-2"]; const a = ND.scoring.scales(R).ABSI.score; delete R["ABSI-3"]; return a === 5 && ND.scoring.scales(R).ABSI.score === null; })());
+  check("ABSI не даёт флагов: порогов у шкалы нет", !ev(absi(0, 6)).differential.length);
+  let same = 0, tot = 0;
+  for (let k = 0; k < 80; k++) {
+    const R = profile(() => Math.floor(rnd() * 5));
+    const a = ev({ ...R, ...paq(0), ...absi(1, 0) }), c = ev({ ...R, ...paq(6), ...absi(0, 6) });
+    tot++; if (JSON.stringify([a.asd, a.adhd, a.constructs, a.symptoms, a.validity, a.legacy]) === JSON.stringify([c.asd, c.adhd, c.constructs, c.symptoms, c.validity, c.legacy])) same++;
+  }
+  check("ответы PAQ и ABSI не меняют РАС, СДВГ, согласованность и пересчёт в тесты", same === tot, `${same}/${tot}`);
+}
+
+// ── Сопутствующие состояния ──
+{
+  const co = ITEMS.filter((x) => x.kind === "comorb");
+  check("сопутствующих состояний 14", co.length === 14);
+  let same = 0, tot = 0;
+  for (let k = 0; k < 80; k++) {
+    const R = profile(() => Math.floor(rnd() * 5));
+    const yes = {}, no = {};
+    co.forEach((it) => { yes[it.id] = { now: { I: 0 }, rt: 500 }; no[it.id] = { now: { I: 1 }, rt: 500 }; });
+    const a = ev({ ...R, ...no }), c = ev({ ...R, ...yes }), b = ev(R);
+    tot++; if (JSON.stringify([a.asd, a.adhd, a.constructs, a.symptoms, a.validity, a.legacy, a.differential]) === JSON.stringify([c.asd, c.adhd, c.constructs, c.symptoms, c.validity, c.legacy, c.differential]) && JSON.stringify([a.asd, a.validity]) === JSON.stringify([b.asd, b.validity])) same++;
+  }
+  check("ответы о сопутствующих состояниях ничего не меняют, даже быстрые", same === tot, `${same}/${tot}`);
 }
 
 // ── «Почему такой результат» ──

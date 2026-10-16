@@ -43,7 +43,7 @@
     if (r.na) return true;
     const f = it.kind === "func" ? "D" : "I";
     const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
-    if (it.kind === "scale") return !!(r.now && r.now.I != null);
+    if (it.kind === "scale" || it.kind === "comorb") return !!(r.now && r.now.I != null);
     return ok(r.now) && ok(r.child);
   }
 
@@ -88,15 +88,29 @@
       `<button class="opt" data-act="set" data-p="${p}" data-f="${field}" data-v="${i}" aria-pressed="${val === i}">${l}</button>`).join("")}</div>`;
   }
 
-  // Пункт PHQ-9 или GAD-7: оригинальная форма, один период «последние 2 недели», без дополнительных полей
+  // Пункт валидированной шкалы: оригинальная форма ответа, один период, без дополнительных полей
   const SCALE_OPTS = ["Ни разу", "Несколько дней", "Более половины дней", "Почти каждый день"];
   const FX_OPTS = ["Совсем не затрудняло", "Немного затрудняло", "Сильно затрудняло", "Крайне сильно затрудняло"];
+  // PAQ: подписаны только 1, 4 и 7, как в оригинале
+  const AGREE7 = ["1", "2", "3", "4", "5", "6", "7"];
+  const AGREE7_KEY = `<div class="scale-key small muted"><span>1 — совершенно не согласен(на)</span><span>4 — ни согласен(на), ни не согласен(на)</span><span>7 — совершенно согласен(на)</span></div>`;
+  const GATE_OPTS = ["Да", "Нет", "Не уверен(а)"];
+  const SCALE_UI = {
+    PHQ9: { legend: "Как часто за последние 2 недели вас беспокоило это?", opts: SCALE_OPTS, cls: "four" },
+    GAD7: { legend: "Как часто за последние 2 недели вас беспокоило это?", opts: SCALE_OPTS, cls: "four" },
+    PAQ: { legend: "Насколько вы согласны, что это верно для вас?", opts: AGREE7, cls: "seven" },
+    ABSI: { legend: "Во время последнего (или нынешнего) аутистического выгорания…", opts: AGREE7, cls: "seven" },
+  };
   function scaleBlock(it, r) {
-    const pr = r.now || {};
-    return `<fieldset class="period"><legend>${it.fx ? "Затруднения в жизни" : "Как часто за последние 2 недели вас беспокоило это?"}</legend>
-      ${scaleBtns("now", pr.I, it.fx ? FX_OPTS : SCALE_OPTS, "I", "four")}</fieldset>
+    const pr = r.now || {}, ui = SCALE_UI[it.scale];
+    const [legend, opts, cls] = it.fx ? ["Затруднения в жизни", FX_OPTS, "four"] : it.gate ? ["Ваш ответ", GATE_OPTS, "three"] : [ui.legend, ui.opts, ui.cls];
+    return `<fieldset class="period"><legend>${legend}</legend>
+      ${scaleBtns("now", pr.I, opts, "I", cls)}${cls === "seven" ? AGREE7_KEY : ""}</fieldset>
       ${it.id === "PHQ-9" && pr.I >= 1 ? safetyBlock() : ""}`;
   }
+  // Сопутствующее состояние: только «да / нет», без периодов и дополнительных полей
+  const YESNO = ["Да", "Нет"];
+  const comorbQ = (r) => `<fieldset class="period"><legend>Есть ли это у вас сейчас или было раньше?</legend>${scaleBtns("now", (r.now || {}).I, YESNO, "I", "two")}</fieldset>`;
   // Показывается при любом ответе, кроме «ни разу», на 9-й пункт PHQ-9
   function safetyBlock() {
     return `<div class="safety" role="note"><b>Если вам сейчас тяжело, вы не одни</b>
@@ -163,7 +177,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
           ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
           ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r))}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r))}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -256,6 +270,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         ${strengthsBlock(E.strengths)}
 
         ${scalesBlock(E.scales)}
+
+        ${comorbBlock(E)}
 
         ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
@@ -358,14 +374,98 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     </section>`;
   }
 
-  // PHQ-9 и GAD-7: баллы и степень по правилам оригиналов. На РАС и СДВГ не влияют.
+  // Шкалы рядом с РАС и СДВГ: баллы по правилам оригиналов. На РАС и СДВГ не влияют.
   function scalesBlock(SC) {
-    const keys = Object.keys(ND.SCALES).filter((k) => SC[k].answered);
-    if (!keys.length) return "";
+    const keys = ["PHQ9", "GAD7"].filter((k) => SC[k].answered);
     const row = (x) => `<tr><td><b>${x.name}</b> ${esc(x.label.toLowerCase())}</td><td class="mono">${x.score == null ? `— (отвечено ${x.answered} из ${x.n})` : `${x.score} из ${x.max}`}</td><td>${x.band ? `${x.band}${x.positive ? " · <b>от порога 10</b>" : ""}` : "—"}</td><td>${x.fx == null ? "—" : esc(FX_OPTS[x.fx].toLowerCase())}</td></tr>`;
-    return `<section class="block"><h2>Настроение и тревога</h2>
+    const mood = !keys.length ? "" : `<section class="block"><h2>Настроение и тревога</h2>
       <div class="tbl-wrap"><table><thead><tr><th>Шкала</th><th>Балл</th><th>Степень</th><th>Затруднения в жизни</th></tr></thead><tbody>${keys.map((k) => row(SC[k])).join("")}</tbody></table></div>
       <p class="small muted">PHQ-9 (Kroenke et al., 2001) и GAD-7 (Spitzer et al., 2006) — проверенные короткие шкалы за последние 2 недели. Степень: 0–4 минимальная, 5–9 лёгкая, 10–14 умеренная, дальше выше. От 10 баллов стоит обсудить результат со специалистом. Это скрининг, а не диагноз. На оценку РАС и СДВГ шкалы не влияют, но тревога и депрессия могут давать похожие трудности со вниманием и общением, поэтому их важно учитывать.</p></section>`;
+    return mood + paqBlock(SC.PAQ) + absiBlock(SC.ABSI);
+  }
+  const subRows = (x, fmt) => Object.values(x.subs).map((s) => `<tr><td>${esc(s.label)}</td><td class="mono">${s.score == null ? "—" : fmt(s)}</td>${s.bands ? `<td>${s.band || "—"}</td>` : ""}</tr>`).join("");
+  function paqBlock(x) {
+    if (!x || !x.answered) return "";
+    return `<section class="block"><h2>Восприятие своих эмоций (алекситимия)</h2>
+      <p>${x.score == null ? `Отвечено ${x.answered} из ${x.n}, для балла нужно не меньше ${x.n - 1}.` : `PAQ: <b>${x.score} из ${x.max}</b>, ${x.band} алекситимия.`}</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Сторона</th><th>Балл</th><th>Уровень</th></tr></thead><tbody>${subRows(x, (s) => `${s.score} из ${s.max}`)}</tbody></table></div>
+      <p class="small muted">Алекситимия — трудность с распознаванием и описанием своих чувств. Это не диагноз и не признак РАС, но она встречается примерно у половины аутичных взрослых и примерно у 5% остальных (Kinnaird et al., 2019) и сама по себе затрудняет понимание эмоций, поэтому её важно учитывать при чтении результата по общению. Шкала PAQ (Preece et al., 2018), русская версия: Ларионов и соавт., 2023. Уровни — по нормам руководства PAQ для взрослых (высокая от 113), в русской выборке средний балл ниже (около 65). На оценку РАС и СДВГ шкала не влияет.</p></section>`;
+  }
+  function absiBlock(x) {
+    if (!x || x.gate == null) return "";
+    if (x.gate === 1) return `<section class="block"><h2>Аутистическое выгорание</h2><p class="small muted">Вы отметили, что такого состояния не было, поэтому вопросы о нём пропущены.</p></section>`;
+    if (!x.answered) return "";
+    const f = (v) => String(v).replace(".", ",");
+    return `<section class="block"><h2>Аутистическое выгорание</h2>
+      <p>${x.score == null ? `Отвечено ${x.answered} из ${x.n}, для балла нужно не меньше ${x.n - x.maxMiss}.` : `ABSI: средний балл <b>${f(x.score)} из 7</b> (выше — тяжелее). Для сравнения: у аутичных участников исследования во время выгорания в среднем около ${f(x.ref)}.`}</p>
+      <div class="tbl-wrap"><table><thead><tr><th>Сторона выгорания</th><th>Средний балл</th></tr></thead><tbody>${subRows(x, (s) => `${f(s.score)} из 7`)}</tbody></table></div>
+      <p class="small muted">Вопросы о последнем или нынешнем периоде выгорания из шкалы ABSI (Arnold et al., 2023). Порогов у шкалы нет, а стороны выгорания авторы советуют смотреть по отдельности. Надёжно отличить выгорание от депрессии пока не может ни одна шкала: в исследовании они заметно связаны, поэтому смотрите на результат вместе с PHQ-9. Русской версии нет, перевод наш и неофициальный. На оценку РАС и СДВГ шкала не влияет.</p></section>`;
+  }
+
+  // Карточка сильных сторон картинкой: 3–5 самых выраженных, без диагнозов и баллов. Рисуется в браузере, никуда не отправляется.
+  const CARD_LINES = {
+    deep: "Погружаюсь в интересное глубже большинства", detail: "Замечаю то, что ускользает от других",
+    system: "Быстро понимаю, как всё устроено", memory: "Надолго запоминаю факты и подробности",
+    honesty: "Говорю прямо и честно", values: "Держу слово и остро чувствую несправедливость",
+    creative: "Нахожу нестандартные решения", energy: "Собираюсь и действую, когда всё горит",
+    independent: "Думаю своей головой, а не как принято",
+  };
+  let cardImg = null;
+  const cardPicks = (list) => list.filter((x) => x.s >= ND.PARAMS.thetaLo).sort((a, b) => b.s - a.s).slice(0, 5);
+  function drawCard(list) {
+    const W = 1080, H = 1350, c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    const g = c.getContext("2d"), F = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    const bg = g.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0, "#1f3a5f"); bg.addColorStop(1, "#3d6b6b");
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = "rgba(255,255,255,0.7)"; g.font = `600 34px ${F}`; g.fillText("МОИ СИЛЬНЫЕ СТОРОНЫ", 96, 150);
+    const picks = cardPicks(list);
+    // раскладка: если не помещается, шрифт уменьшается
+    const lines = (text, maxW) => { const out = []; let line = ""; for (const w of text.split(" ")) { const t = line ? line + " " + w : w; if (g.measureText(t).width > maxW && line) { out.push(line); line = w; } else line = t; } out.push(line); return out; };
+    let k = 1, blocks;
+    for (; k > 0.6; k -= 0.05) {
+      blocks = picks.map((x) => { g.font = `700 ${50 * k}px ${F}`; const a = lines(x.label, W - 290); g.font = `400 ${36 * k}px ${F}`; const b = lines(CARD_LINES[x.key] || "", W - 290); return { a, b }; });
+      const h = blocks.reduce((t, bl) => t + bl.a.length * 58 * k + bl.b.length * 44 * k + 56 * k, 0);
+      if (h <= H - 260 - 180) break;
+    }
+    let y = 260;
+    picks.forEach((x, i) => {
+      const bl = blocks[i];
+      y += 50 * k;
+      g.fillStyle = "#f2c66d"; g.beginPath(); g.arc(126, y - 16 * k, 30 * k, 0, Math.PI * 2); g.fill();
+      g.fillStyle = "#1f3a5f"; g.font = `700 ${34 * k}px ${F}`; g.textAlign = "center"; g.fillText(String(i + 1), 126, y - 4 * k); g.textAlign = "left";
+      g.fillStyle = "#ffffff"; g.font = `700 ${50 * k}px ${F}`;
+      bl.a.forEach((l) => { g.fillText(l, 190, y); y += 58 * k; });
+      g.fillStyle = "rgba(255,255,255,0.82)"; g.font = `400 ${36 * k}px ${F}`;
+      y -= 6 * k;
+      bl.b.forEach((l) => { g.fillText(l, 190, y); y += 44 * k; });
+      y += 6 * k;
+    });
+    g.fillStyle = "rgba(255,255,255,0.6)"; g.font = `400 28px ${F}`;
+    g.fillText("По ответам анкеты ND-Screen · nd-screen.vercel.app", 96, H - 90);
+    return c.toDataURL("image/png");
+  }
+  function cardBlock(list) {
+    if (cardPicks(list).length < 1) return "";
+    if (!cardImg) return `<div class="row no-print"><button class="btn" data-act="card">Сделать карточку картинкой</button><span class="small muted">До 5 самых выраженных сторон, без диагнозов и баллов, чтобы сохранить себе или поделиться.</span></div>`;
+    return `<div class="share-card no-print"><img src="${cardImg}" alt="Карточка: мои сильные стороны">
+      <div class="row"><a class="btn" href="${cardImg}" download="moi-silnye-storony.png">Скачать картинку</a>
+      ${navigator.canShare ? `<button class="btn ghost" data-act="card-share">Поделиться</button>` : ""}
+      <button class="btn ghost" data-act="card-close">Скрыть</button></div>
+      <p class="small muted">Если кнопка «Скачать» не сработала, нажмите на картинку и удерживайте, чтобы сохранить её.</p></div>`;
+  }
+
+  // Сопутствующие состояния: только если профиль не нейротипичный. Ни на что не влияют.
+  const CONF = { strong: "надёжные данные", moderate: "данные средней надёжности", weak: "данных мало" };
+  function comorbBlock(E) {
+    const yes = ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && !state.R[it.id].na && state.R[it.id].now && state.R[it.id].now.I === 0);
+    if (!yes.length) return "";
+    if (ND.scoring.overall(E).code === "nt") return `<section class="block"><h2>Сопутствующие состояния</h2><p class="small muted">Вы отметили ${yes.length} из ${ITEMS.filter((it) => it.kind === "comorb").length} состояний. Профиль по ответам нейротипичный, поэтому сопоставлять их с РАС и СДВГ нет смысла.</p></section>`;
+    return `<section class="block"><h2>Сопутствующие состояния</h2>
+      <p class="muted">Вы отметили состояния, которые при РАС или СДВГ встречаются чаще, чем в среднем. Они не доказывают ни РАС, ни СДВГ и на результат не влияют, но вместе с признаками дополняют картину, и о них стоит сказать врачу.</p>
+      <ul class="sup">${yes.map((it) => `<li><b>${esc(it.t.replace(/\.$/, ""))}</b>${it.co.map((c) => `<span><b>${esc(c.g)}.</b> ${esc(c.t)}</span>`).join("")}<span class="small muted">${CONF[it.conf]}</span></li>`).join("")}</ul>
+      <p class="small muted">Цифры взяты из метаанализов и крупных исследований, часть из них — у детей или в клинических выборках. «Чаще в 2 раза» значит, что состояние встречается чаще, а не что оно есть у большинства.</p></section>`;
   }
 
   function strengthsBlock(list) {
@@ -388,7 +488,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     };
     return `<section class="block"><h2>Сильные стороны</h2>
       <p class="muted">Направления, которые по вашим ответам выражены (от ${pct(th)} из 100). Верхняя полоска показывает «сейчас», нижняя «в детстве».</p>
-      ${shown.length ? `<div class="strengths">${shown.map(card).join("")}</div>` : `<p class="muted">По ответам ни одно из направлений не выражено.</p>`}
+      ${shown.length ? `${cardBlock(list)}<div class="strengths">${shown.map(card).join("")}</div>` : `<p class="muted">По ответам ни одно из направлений не выражено.</p>`}
       ${rest.length ? `<p class="small muted">Не выражены по ответам: ${rest.map((x) => `${esc(x.label.toLowerCase())} (${pct(x.s)})`).join(", ")}.</p>` : ""}
       <p class="small muted">Направления взяты из тем Aspie-quiz о талантах и из исследований сильных сторон взрослых с РАС и СДВГ. Шкала не валидирована, поэтому на индексы, критерии и общий вывод блок не влияет.</p></section>`;
   }
@@ -485,8 +585,9 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       `СДВГ: ${L(E.adhd.level)}, индекс ${E.adhd.index}/100. A1 ${E.adhd.nA1}/9, A2 ${E.adhd.nA2}/9, до 12 лет ${E.adhd.nChild} симптомов${E.adhd.presentation ? ", " + E.adhd.presentation : ""}.`,
       legacyText(E.legacy),
       ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? ["Сильные стороны (не входят в индексы):", ...E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => `  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`)] : []),
-      ...Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.score != null).map((x) => `${x.name}: ${x.score} из ${x.max}, ${x.band} степень`),
+      ...Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.score != null).map((x) => ND.clinician.scaleLine(x)),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
+      ...(() => { const y = ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I === 0); return y.length && ND.scoring.overall(E).code !== "nt" ? [`Сопутствующие состояния: ${y.map((it) => it.t.replace(/\.$/, "")).join("; ")}`] : []; })(),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.flatMap((f) => [`  ${f.text}`, ...(f.details || []).flatMap((d) => ND.clinician.conflictText(d, state.R).map((x) => "    " + x))]),
     ];
@@ -557,6 +658,15 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         return;
       }
       case "print": window.print(); return;
+      case "card": cardImg = drawCard(ND.scoring.evaluate(state.R).strengths); render(); return;
+      case "card-close": cardImg = null; render(); return;
+      case "card-share": {
+        fetch(cardImg).then((x) => x.blob()).then((bl) => {
+          const f = new File([bl], "moi-silnye-storony.png", { type: "image/png" });
+          if (navigator.canShare && navigator.canShare({ files: [f] })) navigator.share({ files: [f], title: "Мои сильные стороны" }).catch(() => {});
+        });
+        return;
+      }
       case "clin": state.view = "clin"; save(); render(); window.scrollTo(0, 0); return;
       case "clin-copy": {
         const txt = ND.clinician.build(state.R).text;

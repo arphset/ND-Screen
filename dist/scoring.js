@@ -232,16 +232,19 @@ ND.scoring = (function () {
         text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
 
     // 6. Однообразие, скорость, «неприменимо»
-    const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength" && x.kind !== "scale").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
+    // шкалы (PHQ-9, GAD-7, PAQ, ABSI) и сопутствующие состояния в проверку согласованности не входят
+    const extra = (it) => it.kind === "scale" || it.kind === "comorb";
+    const core = ND.ITEMS.filter((x) => !extra(x)).map((x) => R[x.id]);
+    const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength" && !extra(x)).map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
       const counts = {};
       Is.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
       if (Math.max(...Object.values(counts)) / Is.length > 0.8) flags.push({ code: "straight", severity: "hard", text: "Больше 80% ответов одинаковые. Возможно, анкета заполнялась не вчитываясь." });
     }
-    const rts = Object.values(R).map((r) => r && r.rt).filter((x) => x > 0).sort((a, b) => a - b);
+    const rts = core.map((r) => r && r.rt).filter((x) => x > 0).sort((a, b) => a - b);
     if (rts.length >= 20 && rts[Math.floor(rts.length / 2)] < 2000)
       flags.push({ code: "speed", severity: "hard", text: "Ответы давались очень быстро (меньше 2 секунд на вопрос в среднем)." });
-    const na = Object.values(R).filter((r) => r && r.na).length;
+    const na = core.filter((r) => r && r.na).length;
     if (na >= 10) flags.push({ code: "na", severity: "soft", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
 
     // Степень согласованности: сколько сопоставлений ответов проверено и сколько из них противоречат.
@@ -253,23 +256,67 @@ ND.scoring = (function () {
       share: checks ? conflicts.length / checks : 0 };
     return flags;
   }
-  // PHQ-9 и GAD-7 по правилам оригиналов: сумма пунктов 0–3. Если пропущен один пункт, сумма пересчитывается
-  // пропорционально (среднее × число пунктов), при двух и более пропусках балла нет. Вопрос о затруднениях не суммируется.
+  // Шкалы по правилам оригиналов. PHQ-9 и GAD-7: сумма пунктов 0–3. PAQ: сумма пунктов 1–7 (24–168).
+  // Если пропущен один пункт, сумма пересчитывается пропорционально (среднее × число пунктов), при двух и более
+  // пропусках балла нет. Вопрос о затруднениях не суммируется. В критерии и индексы РАС и СДВГ шкалы не входят.
+  // Ответ хранится как номер варианта I (0…k−1), балл пункта = lo + I.
   ND.SCALES = {
-    PHQ9: { name: "PHQ-9", label: "Депрессивные симптомы", n: 9, max: 27, flag: 10, d: "depression",
+    PHQ9: { name: "PHQ-9", label: "Депрессивные симптомы", n: 9, max: 27, flag: 10, d: "depression", sec: "mood",
       bands: [[20, "тяжёлая"], [15, "умеренно тяжёлая"], [10, "умеренная"], [5, "лёгкая"], [0, "минимальная"]] },
-    GAD7: { name: "GAD-7", label: "Тревога", n: 7, max: 21, flag: 10, d: "anxiety",
+    GAD7: { name: "GAD-7", label: "Тревога", n: 7, max: 21, flag: 10, d: "anxiety", sec: "mood",
       bands: [[15, "выраженная"], [10, "умеренная"], [5, "лёгкая"], [0, "минимальная"]] },
+    // Perth Alexithymia Questionnaire (Preece et al., 2018), русская версия: Ларионов и соавт., 2023.
+    // Границы «низкая / средняя / высокая» — нормы руководства PAQ (общая выборка взрослых, n = 748): высокая от 113.
+    PAQ: { name: "PAQ", label: "Алекситимия", n: 24, lo: 1, k: 7, max: 168, flag: 113, d: "alexithymia", sec: "emo",
+      bands: [[113, "высокая"], [52, "средняя"], [0, "низкая"]],
+      sub: {
+        NDIF: { label: "Распознавание неприятных чувств", items: [2, 8, 14, 20], bands: [[20, "высокая"], [7, "средняя"], [0, "низкая"]] },
+        PDIF: { label: "Распознавание приятных чувств", items: [5, 11, 17, 23], bands: [[18, "высокая"], [6, "средняя"], [0, "низкая"]] },
+        NDDF: { label: "Описание неприятных чувств", items: [1, 7, 13, 19], bands: [[23, "высокая"], [9, "средняя"], [0, "низкая"]] },
+        PDDF: { label: "Описание приятных чувств", items: [4, 10, 16, 22], bands: [[20, "высокая"], [7, "средняя"], [0, "низкая"]] },
+        GEOT: { label: "Невнимание к своим чувствам (внешне ориентированное мышление)", items: [3, 6, 9, 12, 15, 18, 21, 24], bands: [[41, "высокая"], [18, "средняя"], [0, "низкая"]] },
+      } },
+    // Autistic Burnout Severity Items (Arnold et al., 2023), 20 пунктов. Русского перевода нет, перевод наш, неофициальный.
+    // Как в статье: балл — среднее по отвеченным пунктам, при пропуске больше двух балла нет, порогов нет.
+    // В статье шкала развёрнута (1 — совершенно согласен), у нас 7 — совершенно согласен, поэтому выше — тяжелее.
+    // Отвечают только те, кто отметил выгорание сейчас или раньше (пункт-вход ABSI-0).
+    ABSI: { name: "ABSI", label: "Аутистическое выгорание", n: 20, lo: 1, k: 7, max: 7, mean: true, maxMiss: 2, sec: "burnout",
+      ref: 6.1, // среднее у аутичных участников исследования (1,87 по шкале статьи = 8 − 1,87 по нашей)
+      sub: {
+        EXH: { label: "Истощение", items: [1, 2, 3, 4] },
+        WD: { label: "Перегрузка и уход от общения", items: [5, 6, 7, 8] },
+        COG: { label: "Сбои памяти и мышления", items: [9, 10, 11, 12, 13] },
+        AUT: { label: "Усиление аутичных особенностей и самокритики", items: [14, 15, 16, 17, 18, 19, 20] },
+      } },
   };
+  // Сумма шкалы (или среднее, если mean): пропуски до maxMiss (по умолчанию 1) пересчитываются пропорционально.
+  function sumScale(vals, n, mean, maxMiss = 1) {
+    const got = vals.filter((v) => v != null);
+    if (!got.length || got.length < n - maxMiss) return null;
+    const m = got.reduce((a, b) => a + b, 0) / got.length;
+    return mean ? Math.round(m * 10) / 10 : Math.round(m * n);
+  }
   function scales(R) {
     const out = {};
     for (const [key, d] of Object.entries(ND.SCALES)) {
-      const items = ND.ITEMS.filter((it) => it.kind === "scale" && it.scale === key && !it.fx);
-      const vals = items.map((it) => { const r = R[it.id]; return r && !r.na && r.now && r.now.I != null ? Math.min(3, r.now.I) : null; });
+      const lo = d.lo || 0, top = (d.k || 4) - 1;
+      const items = ND.ITEMS.filter((it) => it.kind === "scale" && it.scale === key && !it.fx && !it.gate);
+      const vals = items.map((it) => { const r = R[it.id]; return r && !r.na && ND.eligible(it, R) && r.now && r.now.I != null ? lo + Math.min(top, r.now.I) : null; });
       const got = vals.filter((v) => v != null);
-      const score = got.length >= d.n - 1 && got.length ? Math.round((got.reduce((a, b) => a + b, 0) / got.length) * d.n) : null;
+      const score = sumScale(vals, d.n, d.mean, d.maxMiss);
       const fxIt = ND.ITEMS.find((it) => it.scale === key && it.fx), fx = fxIt && R[fxIt.id] && R[fxIt.id].now ? R[fxIt.id].now.I : null;
-      out[key] = { ...d, score, answered: got.length, band: score == null ? null : d.bands.find(([th]) => score >= th)[1], positive: score != null && score >= d.flag, fx };
+      const x = { ...d, score, answered: got.length, band: score == null || !d.bands ? null : d.bands.find(([th]) => score >= th)[1], positive: score != null && d.flag != null && score >= d.flag, fx };
+      if (d.sub) {
+        x.subs = {};
+        for (const [sk, sd] of Object.entries(d.sub)) {
+          const sc = d.mean ? sumScale(sd.items.map((i) => vals[i - 1]), sd.items.length, true, Math.floor(sd.items.length / 2))
+            : sumScale(sd.items.map((i) => vals[i - 1]), sd.items.length);
+          x.subs[sk] = { ...sd, score: sc, max: d.mean ? 7 : sd.items.length * 7, band: sc == null || !sd.bands ? null : sd.bands.find(([th]) => sc >= th)[1] };
+        }
+      }
+      const gIt = ND.ITEMS.find((it) => it.scale === key && it.gate);
+      if (gIt) x.gate = R[gIt.id] && R[gIt.id].now ? R[gIt.id].now.I : null;
+      out[key] = x;
     }
     // 9-й пункт PHQ-9: любые мысли о смерти или самоповреждении требуют показать контакты помощи
     const r9 = R["PHQ-9"];

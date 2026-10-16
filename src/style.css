@@ -79,6 +79,9 @@ button:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2
 .period legend { font-weight: 600; font-size: 0.9rem; padding: 0; margin-bottom: 6px; }
 .scale { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
 .scale.four { grid-template-columns: repeat(4, 1fr); }
+.scale.three { grid-template-columns: repeat(3, 1fr); }
+.scale.two { grid-template-columns: repeat(2, 1fr); max-width: 320px; }
+.scale.seven { grid-template-columns: repeat(7, 1fr); }
 .opt {
   border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 6px;
   font-size: 0.85rem; line-height: 1.25; text-align: center; min-height: 48px;
@@ -100,6 +103,9 @@ textarea { width: 100%; min-height: 70px; font: inherit; font-size: 0.9rem; bord
 @media (max-width: 520px) {
   .scale { grid-template-columns: 1fr; }
   .scale.four { grid-template-columns: 1fr 1fr; }
+  .scale.three { grid-template-columns: 1fr; }
+  .scale.seven { grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .scale.seven .opt { text-align: center; padding-inline: 0; }
   .opt { min-height: 42px; text-align: left; padding-inline: 12px; }
   .card { padding: 16px; }
   h1 { font-size: 1.6rem; }
@@ -219,3 +225,9 @@ ul.why-list { margin: 4px 0 0; padding-left: 1.1em; display: grid; gap: 6px; }
 @media print { details.why { display: none; } }
 .safety { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--warn); border-left: 4px solid var(--warn); background: var(--warn-soft); }
 .safety b:first-child { font-family: var(--font-display); font-size: 1.05rem; }
+
+/* карточка сильных сторон */
+.share-card { display: grid; gap: 10px; justify-items: start; }
+.share-card img { width: 100%; max-width: 360px; border-radius: 12px; border: 1px solid var(--line); }
+a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items: center; }
+.scale-key { display: flex; flex-direction: column; gap: 2px; }

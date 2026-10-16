@@ -43,7 +43,19 @@ ND.explain = (function () {
 
   function construct(cid, E, R) {
     const items = ND.ITEMS.filter((it) => it.c === cid);
-    return ND.PERIODS.map((p) => ({ period: p, label: PER[p], text: status(E.constructs[cid][p]), top: top(items, R, p) }));
+    const out = ND.PERIODS.map((p) => ({ period: p, label: PER[p], text: status(E.constructs[cid][p]), top: top(items, R, p) }));
+    const note = alexNote(cid, E);
+    if (note) out.push({ period: "note", label: "учтите", text: note, top: [] });
+    return out;
+  }
+
+  // Высокая алекситимия (PAQ) может частично объяснять трудности в A1 и A2. Баллы от этого не меняются.
+  function alexNote(cid, E) {
+    const x = E.scales && E.scales.PAQ;
+    if (!x || x.score == null || (cid !== "ASD.A1" && cid !== "ASD.A2")) return "";
+    const high = Object.entries(x.subs).filter(([k, s]) => k !== "GEOT" && s.band === "высокая").map(([, s]) => s.label.toLowerCase());
+    if (!x.positive && !high.length) return "";
+    return `По шкале PAQ ${x.positive ? "алекситимия высокая" : `высокие трудности: ${high.join(", ")}`}. Трудно распознавать свои чувства значит и чужие читать труднее, поэтому часть трудностей здесь может объясняться алекситимией, а не РАС (Bird & Cook, 2013). Баллы от этого не меняются, это стоит обсудить со специалистом.`;
   }
 
   function symptom(sid, E, R) {
