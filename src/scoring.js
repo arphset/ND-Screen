@@ -19,6 +19,7 @@ ND.PARAMS = {
 };
 
 ND.PERIODS = ["now", "child"];
+ND.ASRS_PART_A = ["A1.d", "A1.e", "A1.i", "A1.f", "A2.a", "A2.e"];
 ND.FREQ = { rare: 0.25, some: 0.5, often: 0.75, always: 1 };
 ND.ST = { MET: "met", PROB: "probable", NO: "no", NODATA: "nodata" };
 
@@ -223,10 +224,13 @@ ND.scoring = (function () {
     const asd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
 
     const top5 = (pre, p) => mean(Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p].s).sort((a, b) => b - a).slice(0, 5));
-    const coreNow = Math.max(top5("A1", "now"), top5("A2", "now"));
+    // ASRS v1.1, часть A: 6 симптомов, которые в исследовании Kessler et al. (2005) лучше всего отличали СДВГ.
+    // В ядре индекса они весят в 1,5 раза больше остальных: 0.7·(5 сильнейших) + 0.3·(среднее части A).
+    const partA = (p) => mean(ND.ASRS_PART_A.map((sid) => S[sid][p].s));
+    const core = (p) => 0.7 * Math.max(top5("A1", p), top5("A2", p)) + 0.3 * partA(p);
     const childND = Object.keys(S).every((s) => S[s].child.status === ST.NODATA);
-    parts = [[0.6, coreNow], [0.2, fMax != null ? fMax / 3 : 0]];
-    if (!childND) parts.push([0.2, Math.max(top5("A1", "child"), top5("A2", "child"))]);
+    parts = [[0.6, core("now")], [0.2, fMax != null ? fMax / 3 : 0]];
+    if (!childND) parts.push([0.2, core("child")]);
     const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
     return { asd, adhd };
   }
