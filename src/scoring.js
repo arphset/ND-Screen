@@ -48,6 +48,8 @@ ND.scoring = (function () {
     if (!p || p.unknown || p.I == null) return null;
     const In = p.I / 4;
     if (item.rev) return { s: 1 - In, lo: 1 - In, hi: 1 - In };
+    // у сильных сторон частота не спрашивается, поэтому балл равен уровню согласия (иначе «полностью да» давало бы максимум 0.75)
+    if (item.kind === "strength") { const band = r.unsure ? P.unsureBand : 0; return { s: In, lo: Math.max(0, In - band), hi: Math.min(1, In + band) }; }
     const Fn = p.F ? ND.FREQ[p.F] : p.I >= 2 ? 0.5 : 0.2;
     let s = In * (0.5 + 0.5 * Fn);
     // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует.
