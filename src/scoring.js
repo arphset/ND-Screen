@@ -1,0 +1,306 @@
+// Движок подсчёта ND-Screen v0.2 (см. spec §5). Чистые функции, без DOM.
+// Ответ на пункт:
+//   { now: {I, F}, child: {I, F, unknown}, ctx: [], mask: 0..2, harm: 0..3, unsure, note, na, rt }
+//   для kind=func: { now: {D}, child: {D} }
+// I: 0..4, F: "rare"|"some"|"often"|"always", D: 0..3
+
+window.ND = window.ND || {};
+
+ND.PARAMS = {
+  alpha: 0.5,      // вес добавки за маскировку
+  thetaHi: 0.6,    // порог «выполнен»
+  thetaLo: 0.4,    // порог «вероятно»
+  unsureBand: 0.2, // ширина интервала для неуверенных ответов
+  minCoverage: 0.5,
+  presentLegacy: 0.45, // с какого балла пункт считается «присутствует» при пересчёте в старые тесты
+  adhdAdult: 5,    // DSM-5-TR, 17+ лет
+  adhdChildDsm: 3, // «несколько симптомов до 12 лет»
+  adhdChildDiva: 6,
+};
+
+ND.PERIODS = ["now", "child"];
+ND.FREQ = { rare: 0.25, some: 0.5, often: 0.75, always: 1 };
+ND.ST = { MET: "met", PROB: "probable", NO: "no", NODATA: "nodata" };
+
+// Оригинальные подшкалы: число пунктов, диапазон и пороги из публикаций (сверить с первоисточниками, spec §12)
+ND.LEGACY = {
+  RAADS: { name: "RAADS-R", max: 240, cutoff: 65, sub: {
+    soc: { label: "Социальные отношения", n: 39, cutoff: 31 },
+    int: { label: "Ограниченные интересы", n: 14, cutoff: 15 },
+    lang: { label: "Язык", n: 7, cutoff: 4 },
+    sm: { label: "Сенсомоторика", n: 20, cutoff: 16 } } },
+  AQ: { name: "AQ", max: 50, cutoff: 32, cutoffScreen: 26, sub: {
+    soc: { label: "Социальные навыки", n: 10 }, sw: { label: "Переключение внимания", n: 10 },
+    det: { label: "Внимание к деталям", n: 10 }, com: { label: "Коммуникация", n: 10 }, imag: { label: "Воображение", n: 10 } } },
+  CATQ: { name: "CAT-Q", min: 25, max: 175, sub: {
+    comp: { label: "Компенсация", n: 9 }, mask: { label: "Маскировка", n: 8 }, assim: { label: "Ассимиляция", n: 8 } } },
+  RBQ: { name: "RBQ-2A", sub: { rmb: { label: "Повторяющиеся движения", n: 12 }, is: { label: "Настаивание на неизменности", n: 8 } } },
+};
+
+ND.scoring = (function () {
+  const P = ND.PARAMS, ST = ND.ST;
+  const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
+
+  // L1: балл пункта за период → {s, lo, hi} или null (нет данных)
+  function itemScore(item, r, period) {
+    if (!r || r.na) return null;
+    const p = r[period];
+    if (!p || p.unknown || p.I == null) return null;
+    const In = p.I / 4;
+    if (item.rev) return { s: 1 - In, lo: 1 - In, hi: 1 - In };
+    const Fn = p.F ? ND.FREQ[p.F] : p.I >= 2 ? 0.5 : 0.2;
+    let s = In * (0.5 + 0.5 * Fn);
+    const m = r.mask || 0;
+    if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s);
+    const band = r.unsure ? P.unsureBand : 0;
+    return { s, lo: Math.max(0, s - band), hi: Math.min(1, s + band) };
+  }
+
+  function classify(agg, coverage, extraOk = true) {
+    if (coverage < P.minCoverage) return ST.NODATA;
+    if (agg.s >= P.thetaHi && extraOk) return ST.MET;
+    if (agg.s >= P.thetaLo || agg.hi >= P.thetaHi) return ST.PROB;
+    return ST.NO;
+  }
+  const atLeastProb = (st) => st === ST.MET || st === ST.PROB;
+
+  // общий расчёт по набору пунктов: учитываются только открытые (eligible) пункты
+  function aggregate(items, R, period) {
+    const open = items.filter((it) => !it.rev && ND.eligible(it, R));
+    const scores = open.map((it) => ({ it, sc: itemScore(it, R[it.id], period) })).filter((x) => x.sc);
+    const core = items.filter((it) => !it.rev && !it.fu);
+    const coreAnswered = core.filter((it) => itemScore(it, R[it.id], period)).length;
+    const coverage = core.length ? coreAnswered / core.length : 0;
+    if (!scores.length) return { s: 0, lo: 0, hi: 0, coverage, n: 0, scores };
+    return {
+      s: mean(scores.map((x) => x.sc.s)), lo: mean(scores.map((x) => x.sc.lo)), hi: mean(scores.map((x) => x.sc.hi)),
+      coverage, n: scores.length, scores,
+    };
+  }
+
+  // L2: конструкт за период
+  function constructScore(cid, R, period) {
+    const a = aggregate(ND.ITEMS.filter((it) => it.c === cid), R, period);
+    const sd = a.n ? Math.sqrt(mean(a.scores.map((x) => (x.sc.s - a.s) ** 2))) : 0;
+    const evidence = a.scores.filter((x) => x.sc.s >= P.thetaLo).map((x) => x.it.id);
+    return { cid, period, s: a.s, lo: a.lo, hi: a.hi, sd, coverage: a.coverage, n: a.n, status: a.n ? classify(a, a.coverage) : ST.NODATA, evidence };
+  }
+
+  // симптом СДВГ за период: «выполнен» требует ещё частоты «часто» и выше хотя бы в одном пункте
+  function symptomScore(sid, R, period) {
+    const items = ND.ITEMS.filter((x) => x.s === sid);
+    const a = aggregate(items, R, period);
+    if (!a.n) return { sid, period, s: 0, lo: 0, hi: 0, status: ST.NODATA };
+    const frequent = a.scores.some((x) => { const p = R[x.it.id][period]; return p.I >= 2 && (p.F === "often" || p.F === "always"); });
+    return { sid, period, s: a.s, lo: a.lo, hi: a.hi, status: classify(a, 1, frequent) };
+  }
+
+  function funcScores(R) {
+    const out = {};
+    for (const f of Object.keys(ND.LIFE_SPHERES)) {
+      const r = R[f];
+      out[f] = { now: r && r.now ? r.now.D : null, child: r && r.child ? r.child.D : null };
+    }
+    return out;
+  }
+
+  function contextsUsed(R, filter) {
+    const set = new Set();
+    for (const it of ND.ITEMS.filter(filter)) {
+      const r = R[it.id];
+      if (r && !r.na && r.now && r.now.I >= 2 && ND.eligible(it, R)) (r.ctx || []).forEach((c) => set.add(c));
+    }
+    return set;
+  }
+
+  // L3c: валидность
+  function validity(R) {
+    const flags = [];
+    for (const it of ND.ITEMS.filter((x) => x.rev)) {
+      const a = R[it.id], b = R[it.pair];
+      if (a && b && !a.na && !b.na && a.now && b.now && a.now.I != null && b.now.I != null) {
+        if (Math.abs(b.now.I - (4 - a.now.I)) >= 3)
+          flags.push({ code: "pair", text: `Противоречат друг другу ответы на вопросы «${short(it.pair)}» и «${short(it.id)}».` });
+      }
+    }
+    const Is = ND.ITEMS.filter((x) => x.kind !== "func").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
+    if (Is.length >= 30) {
+      const counts = {};
+      Is.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
+      if (Math.max(...Object.values(counts)) / Is.length > 0.8) flags.push({ code: "straight", text: "Больше 80% ответов одинаковые. Возможно, анкета заполнялась не вчитываясь." });
+    }
+    const rts = Object.values(R).map((r) => r && r.rt).filter((x) => x > 0).sort((a, b) => a - b);
+    if (rts.length >= 20 && rts[Math.floor(rts.length / 2)] < 2000)
+      flags.push({ code: "speed", text: "Ответы давались очень быстро (меньше 2 секунд на вопрос в среднем)." });
+    const na = Object.values(R).filter((r) => r && r.na).length;
+    if (na >= 10) flags.push({ code: "na", text: `${na} вопросов отмечены как неприменимые или непонятные.` });
+    return flags;
+  }
+  function short(id) {
+    const t = ND.ITEMS.find((x) => x.id === id).t;
+    return t.length > 60 ? t.slice(0, 57) + "…" : t;
+  }
+
+  function differential(R) {
+    const out = [];
+    for (const it of ND.ITEMS.filter((x) => x.kind === "diff")) {
+      const r = R[it.id];
+      if (!r || r.na || !r.now || r.now.I == null) continue;
+      if (r.now.I >= 3) {
+        const childLow = r.child && !r.child.unknown && r.child.I != null && r.child.I <= 1;
+        out.push({ d: it.d, label: ND.DIFF_LABELS[it.d], note: ND.DIFF_NOTES[it.d], lateOnset: childLow });
+      }
+    }
+    return out;
+  }
+
+  // L3a: пересчёт в шкалы оригинальных тестов.
+  // Закрытый уточняющий пункт значит, что признак в группе слабый: он идёт как «отсутствует».
+  // Неотвеченные и «неприменимо» пропускаются. Оценка подшкалы = средний балл пункта × число пунктов оригинала.
+  function legacy(R) {
+    const tagged = (test, sub) => ND.ITEMS.filter((it) => it.src && it.src.split(" ").includes(`${test}.${sub}`));
+    const nowI = (it) => { const r = R[it.id]; return r && !r.na && r.now && r.now.I != null ? r : null; };
+    const out = {};
+    const groupAnswered = (it) => ND.ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it) && nowI(x));
+
+    function build(test, valueOf, absent) {
+      const def = ND.LEGACY[test], subs = {};
+      let total = 0, used = 0;
+      for (const [k, d] of Object.entries(def.sub)) {
+        const vals = [];
+        for (const it of tagged(test, k)) {
+          if (!ND.eligible(it, R)) { if (groupAnswered(it)) vals.push(absent); continue; }
+          const r = nowI(it);
+          if (r) vals.push(valueOf(it, r));
+        }
+        const est = vals.length ? mean(vals) * d.n : null;
+        subs[k] = { ...d, est, items: vals.length };
+        if (est != null) { total += est; used += vals.length; }
+      }
+      return { subs, total: used ? total : null, items: used };
+    }
+
+    const present = (it, r, period) => { const sc = itemScore(it, r, period); return sc ? sc.s >= P.presentLegacy : null; };
+    out.RAADS = build("RAADS", (it, r) => {
+      const n = present(it, r, "now");
+      let c = present(it, r, "child");
+      if (c == null) c = n; // «не помню»: считаем как сейчас
+      return n && c ? 3 : n ? 2 : c ? 1 : 0;
+    }, 0);
+    out.AQ = build("AQ", (it, r) => (present(it, r, "now") ? 1 : 0), 0);
+    out.CATQ = build("CATQ", (it, r) => 1 + 1.5 * r.now.I, 2.5);
+    const rbq = build("RBQ", (it, r) => (r.now.I < 2 ? 1 : r.now.F === "often" || r.now.F === "always" ? 3 : 2), 1);
+    for (const k of Object.keys(rbq.subs)) rbq.subs[k].mean = rbq.subs[k].est != null ? rbq.subs[k].est / rbq.subs[k].n : null;
+    rbq.mean = rbq.total != null ? rbq.total / 20 : null;
+    out.RBQ = rbq;
+
+    // ASRS v1.1: частота 0–4 по основным пунктам 18 симптомов
+    const fIdx = (r) => (r.now.I === 0 ? 0 : r.now.I === 1 ? 1 : { rare: 1, some: 2, often: 3, always: 4 }[r.now.F] ?? 2);
+    const asrsItem = (sid) => ND.ITEMS.find((x) => x.s === sid && !x.fu);
+    let inatt = 0, hyper = 0, n = 0;
+    for (const sid of Object.keys(ND.ADHD_SYMPTOMS)) {
+      const r = nowI(asrsItem(sid));
+      if (!r) continue;
+      n++; sid.startsWith("A1") ? (inatt += fIdx(r)) : (hyper += fIdx(r));
+    }
+    // часть A: пункты 1–3 от «иногда», 4–6 от «часто»
+    const partA = [["A1.d", 2], ["A1.e", 2], ["A1.i", 2], ["A1.f", 3], ["A2.a", 3], ["A2.e", 3]];
+    let a = 0, aAns = 0;
+    for (const [sid, th] of partA) { const r = nowI(asrsItem(sid)); if (!r) continue; aAns++; if (fIdx(r) >= th) a++; }
+    out.ASRS = { inatt, hyper, answered: n, partA: a, partAAnswered: aAns, partAPositive: aAns === 6 ? a >= 4 : null };
+    return out;
+  }
+
+  // L4b: общий индекс 0–100 (экспериментальный, не откалиброван)
+  function indices(C, S, fMax) {
+    const sNow = (cid) => C[cid].now.s;
+    const A = ["ASD.A1", "ASD.A2", "ASD.A3"], B = ["ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"];
+    const imp = Math.max(fMax != null ? fMax / 3 : 0, C.BURNOUT.now.s);
+    const childVals = [...A, ...B].filter((x) => C[x].child.status !== ST.NODATA).map((x) => C[x].child.s);
+    const top2B = B.map(sNow).sort((a, b) => b - a).slice(0, 2);
+    let parts = [[0.45, mean(A.map(sNow))], [0.3, mean(top2B)], [0.1, imp]];
+    if (childVals.length) parts.push([0.15, mean(childVals)]);
+    const asd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
+
+    const top5 = (pre, p) => mean(Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p].s).sort((a, b) => b - a).slice(0, 5));
+    const coreNow = Math.max(top5("A1", "now"), top5("A2", "now"));
+    const childND = Object.keys(S).every((s) => S[s].child.status === ST.NODATA);
+    parts = [[0.6, coreNow], [0.2, fMax != null ? fMax / 3 : 0]];
+    if (!childND) parts.push([0.2, Math.max(top5("A1", "child"), top5("A2", "child"))]);
+    const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
+    return { asd, adhd };
+  }
+  ND.indexBand = (x) => (x >= 70 ? "высокий" : x >= 50 ? "выраженный" : x >= 30 ? "умеренный" : "низкий");
+
+  // L3b + L4
+  function evaluate(R) {
+    const C = {};
+    for (const cid of Object.keys(ND.CONSTRUCTS)) C[cid] = { now: constructScore(cid, R, "now"), child: constructScore(cid, R, "child") };
+    const S = {};
+    for (const sid of Object.keys(ND.ADHD_SYMPTOMS)) S[sid] = { now: symptomScore(sid, R, "now"), child: symptomScore(sid, R, "child") };
+    const F = funcScores(R);
+    const fNow = Object.values(F).map((x) => x.now).filter((x) => x != null);
+    const fMax = fNow.length ? Math.max(...fNow) : null;
+    const fSpheres2 = fNow.filter((x) => x >= 2).length;
+    const valid = validity(R);
+    const diff = differential(R);
+
+    // ── РАС ──
+    const A = ["ASD.A1", "ASD.A2", "ASD.A3"], B = ["ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"];
+    const st = (cid, p) => C[cid][p].status;
+    const bMet = B.filter((b) => st(b, "now") === ST.MET).length;
+    const bProb = B.filter((b) => atLeastProb(st(b, "now"))).length;
+    let asdCore = ST.NO;
+    if (A.every((a) => st(a, "now") === ST.MET) && bMet >= 2) asdCore = ST.MET;
+    else if (A.every((a) => atLeastProb(st(a, "now"))) && bProb >= 2) asdCore = ST.PROB;
+    else if (A.some((a) => st(a, "now") === ST.NODATA)) asdCore = ST.NODATA;
+
+    const childHits = [...A, ...B].filter((x) => atLeastProb(st(x, "child"))).length;
+    const childNoData = [...A, ...B].filter((x) => st(x, "child") === ST.NODATA).length;
+    const asdC = childHits >= 3 ? ST.MET : childHits >= 1 || childNoData >= 4 ? ST.PROB : ST.NO;
+    const burnout = C.BURNOUT.now;
+    const asdD = fMax >= 2 || burnout.s >= P.thetaHi ? ST.MET : fMax === 1 || burnout.status === ST.PROB ? ST.PROB : fMax == null ? ST.NODATA : ST.NO;
+
+    // ── СДВГ ──
+    const sids = Object.keys(ND.ADHD_SYMPTOMS);
+    const cnt = (pre, p, f) => sids.filter((s) => s.startsWith(pre) && f(S[s][p].status)).length;
+    const nA1 = cnt("A1", "now", (x) => x === ST.MET), nA2 = cnt("A2", "now", (x) => x === ST.MET);
+    const nA1p = cnt("A1", "now", atLeastProb), nA2p = cnt("A2", "now", atLeastProb);
+    const adhdCore = nA1 >= P.adhdAdult || nA2 >= P.adhdAdult ? ST.MET : nA1p >= P.adhdAdult || nA2p >= P.adhdAdult ? ST.PROB : ST.NO;
+    const nChild = sids.filter((s) => S[s].child.status === ST.MET).length;
+    const nChildP = sids.filter((s) => atLeastProb(S[s].child.status)).length;
+    const nChildND = sids.filter((s) => S[s].child.status === ST.NODATA).length;
+    const adhdB = nChild >= P.adhdChildDsm ? ST.MET : nChildP >= P.adhdChildDsm || nChildND >= 9 ? ST.PROB : ST.NO;
+    const ctx = contextsUsed(R, (it) => !!it.s);
+    const adhdC = fSpheres2 >= 2 || ctx.size >= 2 ? ST.MET : fSpheres2 === 1 || ctx.size === 1 ? ST.PROB : ST.NO;
+    const adhdD = fMax >= 2 ? ST.MET : fMax === 1 ? ST.PROB : fMax == null ? ST.NODATA : ST.NO;
+    let presentation = null;
+    if (nA1 >= P.adhdAdult && nA2 >= P.adhdAdult) presentation = "комбинированная";
+    else if (nA1 >= P.adhdAdult) presentation = "преимущественно невнимательная";
+    else if (nA2 >= P.adhdAdult) presentation = "преимущественно гиперактивно-импульсивная";
+
+    // ── L4 ──
+    const validOk = valid.length === 0;
+    function level(core, others, anyTrait) {
+      if (core === ST.MET && others.every((x) => x === ST.MET) && validOk) return "high";
+      if (atLeastProb(core) && others.every(atLeastProb)) return "partial";
+      if (anyTrait) return "subclinical";
+      return "none";
+    }
+    const asdAny = [...A, ...B].some((x) => atLeastProb(st(x, "now")));
+    const adhdAny = nA1p + nA2p >= 3;
+    const idx = indices(C, S, fMax);
+
+    return {
+      constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R),
+      asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: idx.asd },
+      adhd: {
+        core: adhdCore, B: adhdB, C: adhdC, D: adhdD, nA1, nA2, nA1p, nA2p, nChild, nChildP,
+        divaChild: nChild >= P.adhdChildDiva, presentation, contexts: [...ctx],
+        level: level(adhdCore, [adhdB, adhdC, adhdD], adhdAny), index: idx.adhd,
+      },
+    };
+  }
+
+  return { itemScore, constructScore, symptomScore, legacy, evaluate };
+})();
