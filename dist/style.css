@@ -211,3 +211,11 @@ ul.sup li { display: grid; gap: 3px; padding-left: 12px; border-left: 2px solid 
   .radar-key { display: grid; }
   .radar-more { display: none; }
 }
+details.why { margin-top: 6px; }
+details.why summary { cursor: pointer; color: var(--accent); font-size: 0.875rem; }
+details.why p { margin: 6px 0 0; max-width: none; }
+td details.why summary { font-size: 0.8rem; }
+ul.why-list { margin: 4px 0 0; padding-left: 1.1em; display: grid; gap: 6px; }
+@media print { details.why { display: none; } }
+.safety { display: grid; gap: 6px; padding: 14px 16px; border-radius: var(--r); border: 1px solid var(--warn); border-left: 4px solid var(--warn); background: var(--warn-soft); }
+.safety b:first-child { font-family: var(--font-display); font-size: 1.05rem; }

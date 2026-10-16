@@ -43,6 +43,7 @@
     if (r.na) return true;
     const f = it.kind === "func" ? "D" : "I";
     const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
+    if (it.kind === "scale") return !!(r.now && r.now.I != null);
     return ok(r.now) && ok(r.child);
   }
 
@@ -85,6 +86,23 @@
   function scaleBtns(p, val, labels, field, cls = "") {
     return `<div class="scale ${cls}" role="group">${labels.map((l, i) =>
       `<button class="opt" data-act="set" data-p="${p}" data-f="${field}" data-v="${i}" aria-pressed="${val === i}">${l}</button>`).join("")}</div>`;
+  }
+
+  // Пункт PHQ-9 или GAD-7: оригинальная форма, один период «последние 2 недели», без дополнительных полей
+  const SCALE_OPTS = ["Ни разу", "Несколько дней", "Более половины дней", "Почти каждый день"];
+  const FX_OPTS = ["Совсем не затрудняло", "Немного затрудняло", "Сильно затрудняло", "Крайне сильно затрудняло"];
+  function scaleBlock(it, r) {
+    const pr = r.now || {};
+    return `<fieldset class="period"><legend>${it.fx ? "Затруднения в жизни" : "Как часто за последние 2 недели вас беспокоило это?"}</legend>
+      ${scaleBtns("now", pr.I, it.fx ? FX_OPTS : SCALE_OPTS, "I", "four")}</fieldset>
+      ${it.id === "PHQ-9" && pr.I >= 1 ? safetyBlock() : ""}`;
+  }
+  // Показывается при любом ответе, кроме «ни разу», на 9-й пункт PHQ-9
+  function safetyBlock() {
+    return `<div class="safety" role="note"><b>Если вам сейчас тяжело, вы не одни</b>
+      <span>Мысли о смерти или о том, чтобы причинить себе вред, — серьёзный повод поговорить с кем-то уже сегодня: с близким человеком, психиатром или психотерапевтом.</span>
+      <span>Если есть риск, что вы можете навредить себе прямо сейчас, звоните <b class="mono">112</b> (в России и большинстве стран Европы) или в местную экстренную службу.</span>
+      <span class="small muted">Эта анкета не может оценить риск и не заменяет помощь специалиста.</span></div>`;
   }
 
   function periodBlock(it, r, p) {
@@ -145,7 +163,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
           ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
           ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r)}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r))}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -175,13 +193,13 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const C = E.constructs;
     const asdRows = ["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => {
       const k = C[cid], d = ND.CONSTRUCTS[cid];
-      return `<tr><td><b class="mono">${d.dsm}</b> ${d.label}</td><td>${meter(k.now.s, k.child.s)}</td>
+      return `<tr><td><b class="mono">${d.dsm}</b> ${d.label}${whyRow(ND.explain.construct(cid, E, state.R))}</td><td>${meter(k.now.s, k.child.s)}</td>
         <td>${stTag(k.now.status)} <span class="small muted mono">${k.now.hi > k.now.lo ? `${pct(k.now.lo)}–${pct(k.now.hi)}` : pct(k.now.s)}</span></td>
         <td>${stTag(k.child.status)} <span class="small muted mono">${pct(k.child.s)}</span></td></tr>`;
     }).join("");
     const symRows = Object.entries(ND.ADHD_SYMPTOMS).map(([sid, label]) => {
       const s = E.symptoms[sid];
-      return `<tr><td><b class="mono">${sid}</b> ${label}</td><td>${meter(s.now.s, s.child.s)}</td><td>${stTag(s.now.status)}</td><td>${stTag(s.child.status)}</td></tr>`;
+      return `<tr><td><b class="mono">${sid}</b> ${label}${whyRow(ND.explain.symptom(sid, E, state.R))}</td><td>${meter(s.now.s, s.child.s)}</td><td>${stTag(s.now.status)}</td><td>${stTag(s.child.status)}</td></tr>`;
     }).join("");
     const fRows = Object.entries(ND.LIFE_SPHERES).map(([f, l]) => {
       const x = E.func[f];
@@ -207,6 +225,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           <p class="muted">Это структурированный самоотчёт, сведённый к критериям DSM-5-TR. Его можно показать психиатру или клиническому психологу как отправную точку; диагноз ставит специалист.</p>
         </div>
 
+        ${E.scales.safety ? safetyBlock() : ""}
+
         ${(() => { const O = ND.scoring.overall(E); return `<div class="overall ${O.code}"><span class="eyebrow">Общий вывод</span><h2>${O.title}</h2><p>${esc(O.text)}</p></div>`; })()}
 
         <div class="summary">
@@ -216,7 +236,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
             `Влияние на жизнь (D): ${ST_LABEL[asd.D]}`,
             `Камуфляж: ${pct(asd.camo.s)} из 100`,
             asd.indexRaw > asd.index ? `Индекс ограничен 49 (без ограничения ${asd.indexRaw}): не выполнено обязательное условие C или D` : "",
-          ])}
+          ], whyVerdict(asd, ND.explain.asdCriteria(E)))}
           ${verdict("СДВГ", adhd.level, adhd.index, [
             `Невнимательность: ${adhd.nA1} из 9 (ещё ${adhd.nA1p - adhd.nA1} вероятно)`,
             `Гиперактивность и импульсивность: ${adhd.nA2} из 9 (ещё ${adhd.nA2p - adhd.nA2} вероятно)`,
@@ -224,7 +244,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
             `Несколько сфер (C): ${ST_LABEL[adhd.C]}; нарушения (D): ${ST_LABEL[adhd.D]}`,
             adhd.presentation ? `Тип проявления: ${adhd.presentation}` : "",
             adhd.indexRaw > adhd.index ? `Индекс ограничен 49 (без ограничения ${adhd.indexRaw}): не выполнено обязательное условие B или D` : "",
-          ])}
+          ], whyVerdict(adhd, ND.explain.adhdCriteria(E)))}
         </div>
 
         ${radarBlock(E)}
@@ -234,6 +254,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         ${supportBlock(ND.support(E, state.R))}
 
         ${strengthsBlock(E.strengths)}
+
+        ${scalesBlock(E.scales)}
 
         ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
@@ -336,6 +358,16 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     </section>`;
   }
 
+  // PHQ-9 и GAD-7: баллы и степень по правилам оригиналов. На РАС и СДВГ не влияют.
+  function scalesBlock(SC) {
+    const keys = Object.keys(ND.SCALES).filter((k) => SC[k].answered);
+    if (!keys.length) return "";
+    const row = (x) => `<tr><td><b>${x.name}</b> ${esc(x.label.toLowerCase())}</td><td class="mono">${x.score == null ? `— (отвечено ${x.answered} из ${x.n})` : `${x.score} из ${x.max}`}</td><td>${x.band ? `${x.band}${x.positive ? " · <b>от порога 10</b>" : ""}` : "—"}</td><td>${x.fx == null ? "—" : esc(FX_OPTS[x.fx].toLowerCase())}</td></tr>`;
+    return `<section class="block"><h2>Настроение и тревога</h2>
+      <div class="tbl-wrap"><table><thead><tr><th>Шкала</th><th>Балл</th><th>Степень</th><th>Затруднения в жизни</th></tr></thead><tbody>${keys.map((k) => row(SC[k])).join("")}</tbody></table></div>
+      <p class="small muted">PHQ-9 (Kroenke et al., 2001) и GAD-7 (Spitzer et al., 2006) — проверенные короткие шкалы за последние 2 недели. Степень: 0–4 минимальная, 5–9 лёгкая, 10–14 умеренная, дальше выше. От 10 баллов стоит обсудить результат со специалистом. Это скрининг, а не диагноз. На оценку РАС и СДВГ шкалы не влияют, но тревога и депрессия могут давать похожие трудности со вниманием и общением, поэтому их важно учитывать.</p></section>`;
+  }
+
   function strengthsBlock(list) {
     if (!list.length) return "";
     const th = ND.PARAMS.thetaLo;
@@ -371,12 +403,25 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       <div id="export-box"></div></div>`;
   }
 
-  function verdict(name, level, index, lines) {
+  function verdict(name, level, index, lines, why) {
     const [title, desc] = LEVEL[level];
     return `<div class="verdict"><div class="row" style="justify-content:space-between"><h2>${name}</h2><span class="pill ${level}">${title}</span></div>
       <div class="index"><span class="index-num mono">${index}</span><span class="small muted">индекс из 100<br>уровень: ${ND.indexBand(index)}</span></div>
       <div class="meter"><i style="width:${index}%"></i></div>
-      <p>${desc}</p><ul class="small muted stack" style="margin:0;padding-left:1.1em;gap:4px">${lines.filter(Boolean).map((l) => `<li>${esc(l)}</li>`).join("")}</ul></div>`;
+      <p>${desc}</p><ul class="small muted stack" style="margin:0;padding-left:1.1em;gap:4px">${lines.filter(Boolean).map((l) => `<li>${esc(l)}</li>`).join("")}</ul>${why || ""}</div>`;
+  }
+
+  // «Почему такой результат»: критерии, уровень и индекс (src/explain.js)
+  function whyVerdict(x, crits) {
+    const X = ND.explain;
+    return `<details class="why"><summary>Почему такой результат</summary>
+      <p class="small"><b>Уровень.</b> ${esc(X.level(x.level, crits))}</p>
+      <ul class="why-list small">${crits.map(([n, st, t]) => `<li><span class="st ${st}">${ST_LABEL[st]}</span> <b>${esc(n)}.</b> ${esc(t)}</li>`).join("")}</ul>
+      <p class="small"><b>Индекс ${x.index}</b> сложился так:</p>
+      <ul class="why-list small">${X.index(x).map((l) => `<li>${esc(l)}</li>`).join("")}</ul></details>`;
+  }
+  function whyRow(list) {
+    return `<details class="why"><summary>почему</summary>${list.map((w) => `<p class="small"><b>${w.label[0].toUpperCase() + w.label.slice(1)}.</b> ${esc(w.text)}${w.top.length && w.top[0].s >= 40 ? ` Сильнее всего повлияли: ${w.top.filter((t) => t.s >= 40).map((t) => `«${esc(t.t.replace(/\.$/, ""))}» (${t.s})`).join("; ")}.` : ""}</p>`).join("")}</details>`;
   }
 
   function consistencyBlock(V) {
@@ -440,6 +485,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       `СДВГ: ${L(E.adhd.level)}, индекс ${E.adhd.index}/100. A1 ${E.adhd.nA1}/9, A2 ${E.adhd.nA2}/9, до 12 лет ${E.adhd.nChild} симптомов${E.adhd.presentation ? ", " + E.adhd.presentation : ""}.`,
       legacyText(E.legacy),
       ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? ["Сильные стороны (не входят в индексы):", ...E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => `  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`)] : []),
+      ...Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.score != null).map((x) => `${x.name}: ${x.score} из ${x.max}, ${x.band} степень`),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.flatMap((f) => [`  ${f.text}`, ...(f.details || []).flatMap((d) => ND.clinician.conflictText(d, state.R).map((x) => "    " + x))]),

@@ -85,6 +85,7 @@ ND.clinician = (function () {
   function build(R) {
     const U = ND.UI, E = ND.scoring.evaluate(R), O = ND.scoring.overall(E), ST = U.ST_LABEL;
     const C = E.constructs, S = E.symptoms, asd = E.asd, adhd = E.adhd;
+    const sc = Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.answered);
     const opened = ND.ITEMS.filter((it) => ND.eligible(it, R));
     const answered = opened.filter((it) => R[it.id] && (R[it.id].na || (R[it.id].now && (R[it.id].now.I != null || R[it.id].now.D != null || R[it.id].now.unknown)))).length;
     const hard = E.validity.some((f) => f.severity === "hard");
@@ -106,11 +107,15 @@ ND.clinician = (function () {
       <tr><td>СДВГ</td><td>${L(adhd.level)}, индекс ${adhd.index}/100${adhd.indexRaw > adhd.index ? ` (ограничен; без ограничения ${adhd.indexRaw})` : ""}${adhd.presentation ? `, ${adhd.presentation}` : ""}</td></tr>
       <tr><td>Согласованность</td><td>${consist} (проверено пар: ${E.validity.pairsChecked || 0})</td></tr>
       <tr><td>Камуфляж</td><td>${pct(C.CAMO.now.s)}/100; CAT-Q (пересчёт) ${r0(E.legacy.CATQ.total)}/175</td></tr>
+      ${sc.map((x) => `<tr><td>${x.name}</td><td>${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : `${x.score}/${x.max}, ${x.band} степень`}</td></tr>`).join("")}
+      ${E.scales.safety ? `<tr><td><b>PHQ-9, пункт 9</b></td><td><b>Отмечены мысли о смерти или самоповреждении: требуется оценка риска</b></td></tr>` : ""}
       <tr><td>Дифференциальные флаги</td><td>${E.differential.length ? E.differential.map((d) => esc(d.label) + (d.lateOnset ? " (начало не в детстве)" : "")).join("; ") : "нет"}</td></tr>
     </tbody></table></div></section>`);
     T.push("СВОДКА", `Общий вывод: ${O.title}`, `РАС: ${L(asd.level)}, индекс ${asd.index}/100`,
       `СДВГ: ${L(adhd.level)}, индекс ${adhd.index}/100${adhd.presentation ? ", " + adhd.presentation : ""}`,
       `Согласованность: ${consist}`, `Камуфляж: ${pct(C.CAMO.now.s)}/100`,
+      ...sc.map((x) => `${x.name}: ${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : `${x.score}/${x.max}, ${x.band} степень`}`),
+      ...(E.scales.safety ? ["PHQ-9, пункт 9: отмечены мысли о смерти или самоповреждении, требуется оценка риска"] : []),
       `Дифференциальные флаги: ${E.differential.length ? E.differential.map((d) => d.label).join("; ") : "нет"}`, "");
 
     const evList = (items) => {

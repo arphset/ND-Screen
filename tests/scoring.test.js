@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -20,6 +20,7 @@ for (const it of ITEMS) {
   if (it.rev) { check(`обратный ${it.id} ссылается на существующий пункт`, ids.includes(it.pair)); continue; }
   if (it.kind === "func") { check(`${it.id}: сфера жизни`, !!ND.LIFE_SPHERES[it.f]); continue; }
   if (it.kind === "diff") { check(`${it.id}: флаг`, !!ND.DIFF_LABELS[it.d]); continue; }
+  if (it.kind === "scale") { check(`${it.id}: шкала`, !!ND.SCALES[it.scale] && !it.c && !it.s && !it.src); continue; }
   if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
@@ -353,8 +354,52 @@ for (let k = 0; k < 300; k++) {
   check("старый ответ «скрываю» у такого вопроса не даёт поправки", ND.scoring.itemScore(it, r, "now").s === ND.scoring.itemScore(it, { ...r, mask: 0 }, "now").s);
 }
 
+// ── PHQ-9 и GAD-7 ──
+{
+  const sc = (id) => ITEMS.filter((x) => x.scale === id && !x.fx);
+  const fill = (v, skip = 0) => { const R = {}; for (const k of ["PHQ9", "GAD7"]) sc(k).forEach((it, i) => { if (i >= skip) R[it.id] = { now: { I: v } }; }); return R; };
+  check("PHQ-9: 9 пунктов, GAD-7: 7 пунктов", sc("PHQ9").length === 9 && sc("GAD7").length === 7);
+  const all3 = ND.scoring.scales(fill(3));
+  check("максимум: PHQ-9 = 27, GAD-7 = 21", all3.PHQ9.score === 27 && all3.GAD7.score === 21 && all3.PHQ9.band === "тяжёлая" && all3.GAD7.band === "выраженная");
+  const one = ND.scoring.scales(fill(2, 1)), two = ND.scoring.scales(fill(2, 2));
+  check("один пропуск — пропорциональный пересчёт, два — балла нет", one.PHQ9.score === 18 && one.GAD7.score === 14 && two.PHQ9.score === null && two.GAD7.score === null);
+  const b = (v) => ND.scoring.scales(fill(0)).PHQ9.band;
+  check("ноль — минимальная степень, флага нет", ND.scoring.scales(fill(0)).PHQ9.band === "минимальная" && !ND.scoring.scales(fill(0)).PHQ9.positive);
+  check("9-й пункт PHQ-9 ≥ 1 включает блок помощи", ND.scoring.scales({ "PHQ-9": { now: { I: 1 } } }).safety && !ND.scoring.scales({ "PHQ-9": { now: { I: 0 } } }).safety);
+  const E10 = ev({ ...fill(0), "PHQ-1": { now: { I: 3 } }, "PHQ-2": { now: { I: 3 } }, "PHQ-3": { now: { I: 2 } }, "PHQ-4": { now: { I: 2 } } });
+  check("PHQ-9 от 10 → флаг депрессии", E10.scales.PHQ9.score === 10 && E10.differential.some((d) => d.d === "depression") && !E10.differential.some((d) => d.d === "anxiety"));
+  // шкалы не влияют на РАС и СДВГ
+  let same = 0, tot = 0;
+  for (let k = 0; k < 80; k++) {
+    const R = profile(() => Math.floor(rnd() * 5));
+    const a = ev({ ...R, ...fill(0) }), c = ev({ ...R, ...fill(3) });
+    tot++; if (JSON.stringify([a.asd, a.adhd, a.constructs, a.symptoms, a.validity, a.legacy]) === JSON.stringify([c.asd, c.adhd, c.constructs, c.symptoms, c.validity, c.legacy])) same++;
+  }
+  check("ответы PHQ-9 и GAD-7 не меняют РАС, СДВГ, согласованность и пересчёт в тесты", same === tot, `${same}/${tot}`);
+}
+
+// ── «Почему такой результат» ──
+{
+  let bad = 0;
+  const profiles = [{}, ND.sampleResponses()];
+  for (let k = 0; k < 60; k++) profiles.push(profile(() => Math.floor(rnd() * 5)));
+  for (const R of profiles) {
+    const E = ev(R), X = ND.explain;
+    const txt = JSON.stringify([
+      Object.keys(ND.CONSTRUCTS).filter((c) => c.startsWith("ASD.")).map((c) => X.construct(c, E, R)),
+      Object.keys(ND.ADHD_SYMPTOMS).map((s) => X.symptom(s, E, R)),
+      X.asdCriteria(E), X.adhdCriteria(E), X.level(E.asd.level, X.asdCriteria(E)), X.level(E.adhd.level, X.adhdCriteria(E)), X.index(E.asd), X.index(E.adhd)]);
+    if (/undefined|NaN|null из/.test(txt)) bad++;
+    // вклады частей индекса складываются в сам индекс
+    for (const x of [E.asd, E.adhd]) if (Math.abs(x.indexParts.reduce((a, p) => a + p.pts, 0) - x.indexRaw) > 0.51) bad++;
+    // текст статуса не противоречит статусу
+    for (const s of Object.keys(ND.ADHD_SYMPTOMS)) { const w = X.symptom(s, E, R)[0], st = E.symptoms[s].now.status; if (st === "met" && !/не ниже порога 60/.test(w.text)) bad++; if (st === "no" && !/ниже 40/.test(w.text)) bad++; }
+  }
+  check("пояснения строятся без ошибок, вклады индекса сходятся, тексты совпадают со статусами", bad === 0, bad);
+}
+
 // ── Пояснения к вопросам ──
-for (const it of ITEMS) {
+for (const it of ITEMS.filter((x) => x.kind !== "scale")) {
   const h = ND.HINTS[it.id];
   check(`${it.id}: есть пояснение`, typeof h === "string" && h.length >= 40 && h.length <= 260, h);
 }

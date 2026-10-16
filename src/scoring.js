@@ -232,7 +232,7 @@ ND.scoring = (function () {
         text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
 
     // 6. Однообразие, скорость, «неприменимо»
-    const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
+    const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength" && x.kind !== "scale").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
       const counts = {};
       Is.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
@@ -253,8 +253,37 @@ ND.scoring = (function () {
       share: checks ? conflicts.length / checks : 0 };
     return flags;
   }
+  // PHQ-9 и GAD-7 по правилам оригиналов: сумма пунктов 0–3. Если пропущен один пункт, сумма пересчитывается
+  // пропорционально (среднее × число пунктов), при двух и более пропусках балла нет. Вопрос о затруднениях не суммируется.
+  ND.SCALES = {
+    PHQ9: { name: "PHQ-9", label: "Депрессивные симптомы", n: 9, max: 27, flag: 10, d: "depression",
+      bands: [[20, "тяжёлая"], [15, "умеренно тяжёлая"], [10, "умеренная"], [5, "лёгкая"], [0, "минимальная"]] },
+    GAD7: { name: "GAD-7", label: "Тревога", n: 7, max: 21, flag: 10, d: "anxiety",
+      bands: [[15, "выраженная"], [10, "умеренная"], [5, "лёгкая"], [0, "минимальная"]] },
+  };
+  function scales(R) {
+    const out = {};
+    for (const [key, d] of Object.entries(ND.SCALES)) {
+      const items = ND.ITEMS.filter((it) => it.kind === "scale" && it.scale === key && !it.fx);
+      const vals = items.map((it) => { const r = R[it.id]; return r && !r.na && r.now && r.now.I != null ? Math.min(3, r.now.I) : null; });
+      const got = vals.filter((v) => v != null);
+      const score = got.length >= d.n - 1 && got.length ? Math.round((got.reduce((a, b) => a + b, 0) / got.length) * d.n) : null;
+      const fxIt = ND.ITEMS.find((it) => it.scale === key && it.fx), fx = fxIt && R[fxIt.id] && R[fxIt.id].now ? R[fxIt.id].now.I : null;
+      out[key] = { ...d, score, answered: got.length, band: score == null ? null : d.bands.find(([th]) => score >= th)[1], positive: score != null && score >= d.flag, fx };
+    }
+    // 9-й пункт PHQ-9: любые мысли о смерти или самоповреждении требуют показать контакты помощи
+    const r9 = R["PHQ-9"];
+    out.safety = !!(r9 && !r9.na && r9.now && r9.now.I >= 1);
+    return out;
+  }
+
   function differential(R) {
     const out = [];
+    const SC = scales(R);
+    for (const key of Object.keys(ND.SCALES)) {
+      const x = SC[key];
+      if (x.positive) out.push({ d: x.d, label: ND.DIFF_LABELS[x.d], note: `${x.name}: ${x.score} из ${x.max}, ${x.band} степень. ` + ND.DIFF_NOTES[x.d], lateOnset: false, scale: key });
+    }
     for (const it of ND.ITEMS.filter((x) => x.kind === "diff")) {
       const r = R[it.id];
       if (!r || r.na || !r.now || r.now.I == null) continue;
@@ -369,10 +398,13 @@ ND.scoring = (function () {
     // симптомами. Без этого человек без признаков, но с тяжёлой депрессией, получал бы до 10–20 баллов только за нарушения.
     const attributed = (x, c) => x * Math.min(1, c / P.thetaHi);
     const asdNow = coreOf("now") || 0;
-    let parts = [[0.75, asdNow], [0.1, attributed(imp, asdNow)]];
+    let parts = [[0.75, asdNow, "core"], [0.1, attributed(imp, asdNow), "imp"]];
     const childCore = coreOf("child");
-    if (childCore != null) parts.push([0.15, childCore]);
+    if (childCore != null) parts.push([0.15, childCore, "child"]);
     const asd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
+    // разбивка индекса для пояснения: сколько баллов дала каждая часть
+    const split = (ps) => { const W = ps.reduce((x, [w]) => x + w, 0); return ps.map(([w, v, key]) => ({ key, w: w / W, v, pts: (100 * w * v) / W })); };
+    const asdParts = split(parts);
 
     const top5 = (pre, p) => mean(Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p].s).sort((a, b) => b - a).slice(0, 5));
     // ASRS v1.1, часть A: 6 симптомов, которые в исследовании Kessler et al. (2005) лучше всего отличали СДВГ.
@@ -381,10 +413,10 @@ ND.scoring = (function () {
     const core = (p) => 0.7 * Math.max(top5("A1", p), top5("A2", p)) + 0.3 * partA(p);
     const childND = Object.keys(S).every((s) => S[s].child.status === ST.NODATA);
     const adhdNow = core("now");
-    parts = [[0.6, adhdNow], [0.2, attributed(Math.max(fMax != null ? fMax / 3 : 0, hAdhd.mean), adhdNow)]];
-    if (!childND) parts.push([0.2, core("child")]);
+    parts = [[0.6, adhdNow, "core"], [0.2, attributed(Math.max(fMax != null ? fMax / 3 : 0, hAdhd.mean), adhdNow), "imp"]];
+    if (!childND) parts.push([0.2, core("child"), "child"]);
     const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
-    return { asd, adhd };
+    return { asd, adhd, asdParts, adhdParts: split(parts) };
   }
   // Диапазоны индекса совпадают с порогами критериев: 40 — «вероятно», 60 — «выполнен».
   ND.indexBand = (x) => (x >= 80 ? "высокий" : x >= 60 ? "выраженный" : x >= 40 ? "умеренный" : "низкий");
@@ -464,12 +496,14 @@ ND.scoring = (function () {
     const adhdIndex = failed(adhdB) || failed(adhdD) ? Math.min(idx.adhd, CAP) : idx.adhd;
 
     return {
-      constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R), strengths: strengths(R),
-      asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: asdIndex, indexRaw: idx.asd },
+      constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R), strengths: strengths(R), scales: scales(R),
+      asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: asdIndex, indexRaw: idx.asd,
+        indexParts: idx.asdParts, why: { any: asdAny, fMax: fA, burnout: boA.s, harm2: hAsd.n2 } },
       adhd: {
         core: adhdCore, B: adhdB, C: adhdC, D: adhdD, nA1, nA2, nA1p, nA2p, nChild, nChildP,
         divaChild: nChild >= P.adhdChildDiva, presentation, contexts: [...ctx],
         level: level(adhdCore, [adhdB, adhdC, adhdD], adhdAny), index: adhdIndex, indexRaw: idx.adhd,
+        indexParts: idx.adhdParts, why: { any: adhdAny, fMax: fH, spheres2: fS2, harm2: hAdhd.n2 },
       },
     };
   }
@@ -507,5 +541,5 @@ ND.scoring = (function () {
     return { code, title, text };
   }
 
-  return { itemScore, constructScore, symptomScore, legacy, evaluate, overall };
+  return { itemScore, constructScore, symptomScore, legacy, scales, evaluate, overall };
 })();
