@@ -323,5 +323,33 @@ ND.scoring = (function () {
     };
   }
 
-  return { itemScore, constructScore, symptomScore, legacy, evaluate };
+  // L4c: общий вывод по двум направлениям
+  // strong — высокое или частичное соответствие; trait — отдельные черты; none — не соответствует
+  function overall(E) {
+    const cls = (lv) => (lv === "high" || lv === "partial" ? "strong" : lv === "subclinical" ? "trait" : "none");
+    const a = cls(E.asd.level), h = cls(E.adhd.level);
+    const flags = E.differential.length > 0;
+    let code, title, text;
+    if (a === "strong" && h === "strong") {
+      code = "both"; title = "Признаки и РАС, и СДВГ";
+      text = "Ответы соответствуют критериям обоих направлений. Такое сочетание встречается часто, и DSM-5-TR допускает оба диагноза одновременно.";
+    } else if (a === "strong") {
+      code = "asd"; title = "Признаки РАС";
+      text = h === "trait" ? "Ответы соответствуют критериям РАС. По СДВГ есть отдельные черты, но до критериев они не дотягивают." : "Ответы соответствуют критериям РАС. Признаков СДВГ по ответам недостаточно.";
+    } else if (h === "strong") {
+      code = "adhd"; title = "Признаки СДВГ";
+      text = a === "trait" ? "Ответы соответствуют критериям СДВГ. По РАС есть отдельные черты, но до критериев они не дотягивают." : "Ответы соответствуют критериям СДВГ. Признаков РАС по ответам недостаточно.";
+    } else if (a === "trait" || h === "trait") {
+      code = "traits"; title = "Отдельные нейроотличные черты";
+      text = "Некоторые черты выражены, но ни по РАС, ни по СДВГ картина не складывается в критерии. Такое встречается и у нейротипичных людей.";
+    } else {
+      code = "nt"; title = "Нейротипичный профиль";
+      text = "Ответы не соответствуют критериям ни РАС, ни СДВГ, выраженных черт тоже нет.";
+    }
+    if (flags && code !== "both") text += " Отмеченные ниже состояния стоит обсудить со специалистом отдельно.";
+    if (E.validity.length) text += " Есть замечания к надёжности ответов, вывод менее уверенный.";
+    return { code, title, text };
+  }
+
+  return { itemScore, constructScore, symptomScore, legacy, evaluate, overall };
 })();

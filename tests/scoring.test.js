@@ -129,5 +129,29 @@ for (let k = 0; k < 300; k++) {
   check("D СДВГ выполняется по ответам «мешает»", ev(noFunc).adhd.D === "met", ev(noFunc).adhd.D);
 }
 
+// ── 7. Общий вывод ──
+{
+  const nt = profile(() => 0);
+  for (const it of ITEMS) if (it.rev) nt[it.id] = { now: { I: 4 }, child: { I: 4 } };
+  for (const it of ITEMS) if (nt[it.id].now) { nt[it.id].now = { I: 0 }; nt[it.id].child = { I: 0 }; nt[it.id].harm = 0; nt[it.id].mask = 0; }
+  for (const it of ITEMS) if (it.rev) nt[it.id] = { now: { I: 4 }, child: { I: 4 } };
+  for (const f of Object.keys(ND.LIFE_SPHERES)) nt[f] = { now: { D: 0 }, child: { D: 0 } };
+  check("общий вывод: нейротипичный", ND.scoring.overall(ev(nt)).code === "nt", ND.scoring.overall(ev(nt)));
+  const adhdOnly = {};
+  for (const it of ITEMS) {
+    if (it.kind === "func") adhdOnly[it.id] = { now: { D: 2 }, child: { D: 2 } };
+    else if (it.s) adhdOnly[it.id] = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" }, ctx: ["work", "home"], harm: 2 };
+    else if (it.rev) adhdOnly[it.id] = { now: { I: 4 }, child: { I: 4 } };
+    else adhdOnly[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  }
+  check("общий вывод: только СДВГ", ND.scoring.overall(ev(adhdOnly)).code === "adhd", ND.scoring.overall(ev(adhdOnly)));
+  const asdOnly = ND.sampleResponses();
+  for (const it of ITEMS) if (it.s) asdOnly[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  check("общий вывод: РАС", ["asd"].includes(ND.scoring.overall(ev(asdOnly)).code), ND.scoring.overall(ev(asdOnly)));
+  const both = JSON.parse(JSON.stringify(ND.sampleResponses()));
+  for (const it of ITEMS) if (it.s) both[it.id] = { now: { I: 4, F: "always" }, child: { I: 4, F: "always" }, ctx: ["work", "home"], harm: 2 };
+  check("общий вывод: оба", ND.scoring.overall(ev(both)).code === "both", ND.scoring.overall(ev(both)));
+}
+
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);

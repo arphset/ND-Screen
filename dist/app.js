@@ -201,6 +201,8 @@
           <p class="muted">Это структурированный самоотчёт, сведённый к критериям DSM-5-TR. Его можно показать психиатру или клиническому психологу как отправную точку; диагноз ставит специалист.</p>
         </div>
 
+        ${(() => { const O = ND.scoring.overall(E); return `<div class="overall ${O.code}"><span class="eyebrow">Общий вывод</span><h2>${O.title}</h2><p>${esc(O.text)}</p></div>`; })()}
+
         <div class="summary">
           ${verdict("РАС", asd.level, asd.index, [
             `Ядро (A1–A3 и не меньше двух B): ${ST_LABEL[asd.core]}`,
@@ -310,6 +312,7 @@
     const L = (lv) => LEVEL[lv][0];
     const lines = [
       "ND-Screen 0.3, экспериментальный самоотчёт (не диагноз)",
+      `Общий вывод: ${ND.scoring.overall(E).title}. ${ND.scoring.overall(E).text}`,
       `РАС: ${L(E.asd.level)}, индекс ${E.asd.index}/100. Ядро ${ST_LABEL[E.asd.core]}, детство ${ST_LABEL[E.asd.C]}, нарушения ${ST_LABEL[E.asd.D]}, камуфляж ${pct(E.asd.camo.s)}/100.`,
       ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((c) =>
         `  ${ND.CONSTRUCTS[c].dsm} ${ND.CONSTRUCTS[c].label}: сейчас ${pct(E.constructs[c].now.s)} (${ST_LABEL[E.constructs[c].now.status]}), детство ${pct(E.constructs[c].child.s)}`),

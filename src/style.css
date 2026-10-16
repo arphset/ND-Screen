@@ -148,3 +148,6 @@ pre.copybox { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0
 .index { display: flex; align-items: center; gap: 12px; }
 .index-num { font-size: 2.4rem; font-weight: 600; line-height: 1; color: var(--accent); }
 .extras { display: grid; gap: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
+.overall { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: var(--r); padding: 18px 20px; display: grid; gap: 8px; }
+.overall.nt { border-left-color: var(--muted); }
+.overall h2 { font-size: 1.5rem; }
