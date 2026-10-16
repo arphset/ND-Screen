@@ -5,5 +5,6 @@
 - `src/` исходники: `items.js` (банк вопросов), `scoring.js` (подсчёт), `app.js` (интерфейс), `sample.js` (пример профиля), `style.css`
 - `python3 build.py` собирает `dist/` (статический сайт) из `src/`
 - `docs/spec.md` спецификация
+- `node tests/scoring.test.js` проверки подсчёта баллов
 
 Деплой: Vercel → Add New → Project → Import этого репозитория. `vercel.json` уже указывает папку `dist`, настраивать ничего не нужно.

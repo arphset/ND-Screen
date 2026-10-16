@@ -55,7 +55,7 @@
     const done = openItems().filter(answered).length;
     app.innerHTML = `
       <div class="wrap intro">
-        <span class="eyebrow">Экспериментальный скрининг · версия 0.2</span>
+        <span class="eyebrow">Экспериментальный скрининг · версия 0.3</span>
         <h1>ND-Screen</h1>
         <p>Анкета о признаках аутизма (РАС) и СДВГ у взрослых. Она собирает содержание RAADS-R, AQ, CAT-Q, ASRS, RBQ-2A и доменов ADOS-2, ADI-R, DIVA-5 и сводит ответы к критериям DSM-5-TR.</p>
         <p>Вместо «да» или «нет» на каждый вопрос можно ответить точнее:</p>
@@ -101,6 +101,22 @@
     return html + "</fieldset>";
   }
 
+  // Дополнительные стороны ответа: показываются сразу, без раскрытия
+  function extrasBlock(it, r) {
+    const unsure = `<label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>`;
+    if (it.kind === "func" || isSimple(it)) return unsure;
+    const ctx = r.ctx || [];
+    return `<div class="extras">
+        <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
+          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}</div></div>
+        <div class="sub"><span class="sub-label">Скрываете ли вы это от окружающих?</span><div class="chips">${MASK.map((l, i) =>
+          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}</div></div>
+        <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
+          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}</div></div>
+        ${unsure}
+      </div>`;
+  }
+
   function renderQ() {
     const it = ITEMS[state.idx];
     const r = resp(it.id);
@@ -123,7 +139,7 @@
         </div>
         <div class="card">
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child")}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r)}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -180,7 +196,7 @@
     app.innerHTML = `
       <div class="wrap wide">
         <div class="stack">
-          <span class="eyebrow">${state.sample ? "Пример отчёта на вымышленных ответах" : "Отчёт по вашим ответам"} · ND-Screen 0.2</span>
+          <span class="eyebrow">${state.sample ? "Пример отчёта на вымышленных ответах" : "Отчёт по вашим ответам"} · ND-Screen 0.3</span>
           <h1>Профиль признаков</h1>
           <p class="muted">Это структурированный самоотчёт, сведённый к критериям DSM-5-TR. Его можно показать психиатру или клиническому психологу как отправную точку; диагноз ставит специалист.</p>
         </div>
@@ -293,7 +309,7 @@
     const E = ND.scoring.evaluate(state.R);
     const L = (lv) => LEVEL[lv][0];
     const lines = [
-      "ND-Screen 0.2, экспериментальный самоотчёт (не диагноз)",
+      "ND-Screen 0.3, экспериментальный самоотчёт (не диагноз)",
       `РАС: ${L(E.asd.level)}, индекс ${E.asd.index}/100. Ядро ${ST_LABEL[E.asd.core]}, детство ${ST_LABEL[E.asd.C]}, нарушения ${ST_LABEL[E.asd.D]}, камуфляж ${pct(E.asd.camo.s)}/100.`,
       ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((c) =>
         `  ${ND.CONSTRUCTS[c].dsm} ${ND.CONSTRUCTS[c].label}: сейчас ${pct(E.constructs[c].now.s)} (${ST_LABEL[E.constructs[c].now.status]}), детство ${pct(E.constructs[c].child.s)}`),
@@ -360,7 +376,7 @@
         return;
       }
       case "export": {
-        const data = JSON.stringify({ version: "0.2", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R) }, null, 2);
+        const data = JSON.stringify({ version: "0.3", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R) }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));

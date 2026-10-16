@@ -52,7 +52,8 @@ ND.scoring = (function () {
     const Fn = p.F ? ND.FREQ[p.F] : p.I >= 2 ? 0.5 : 0.2;
     let s = In * (0.5 + 0.5 * Fn);
     const m = r.mask || 0;
-    if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s);
+    // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует
+    if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s) * In;
     const band = r.unsure ? P.unsureBand : 0;
     return { s, lo: Math.max(0, s - band), hi: Math.min(1, s + band) };
   }
@@ -162,15 +163,19 @@ ND.scoring = (function () {
     const tagged = (test, sub) => ND.ITEMS.filter((it) => it.src && it.src.split(" ").includes(`${test}.${sub}`));
     const nowI = (it) => { const r = R[it.id]; return r && !r.na && r.now && r.now.I != null ? r : null; };
     const out = {};
-    const groupAnswered = (it) => ND.ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it) && nowI(x));
 
-    function build(test, valueOf, absent) {
+    function build(test, valueOf) {
       const def = ND.LEGACY[test], subs = {};
       let total = 0, used = 0;
       for (const [k, d] of Object.entries(def.sub)) {
         const vals = [];
         for (const it of tagged(test, k)) {
-          if (!ND.eligible(it, R)) { if (groupAnswered(it)) vals.push(absent); continue; }
+          if (!ND.eligible(it, R)) {
+            // закрытый уточняющий вопрос: берём среднее по основным вопросам его группы (там все ответы ниже «частично»)
+            const core = ND.ITEMS.filter((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)).map((x) => [x, nowI(x)]).filter(([, r]) => r);
+            if (core.length) vals.push(mean(core.map(([x, r]) => valueOf(x, r))));
+            continue;
+          }
           const r = nowI(it);
           if (r) vals.push(valueOf(it, r));
         }
@@ -187,10 +192,10 @@ ND.scoring = (function () {
       let c = present(it, r, "child");
       if (c == null) c = n; // «не помню»: считаем как сейчас
       return n && c ? 3 : n ? 2 : c ? 1 : 0;
-    }, 0);
-    out.AQ = build("AQ", (it, r) => (present(it, r, "now") ? 1 : 0), 0);
-    out.CATQ = build("CATQ", (it, r) => 1 + 1.5 * r.now.I, 2.5);
-    const rbq = build("RBQ", (it, r) => (r.now.I < 2 ? 1 : r.now.F === "often" || r.now.F === "always" ? 3 : 2), 1);
+    });
+    out.AQ = build("AQ", (it, r) => (present(it, r, "now") ? 1 : 0));
+    out.CATQ = build("CATQ", (it, r) => 1 + 1.5 * r.now.I);
+    const rbq = build("RBQ", (it, r) => (r.now.I < 2 ? 1 : r.now.F === "often" || r.now.F === "always" ? 3 : 2));
     for (const k of Object.keys(rbq.subs)) rbq.subs[k].mean = rbq.subs[k].est != null ? rbq.subs[k].est / rbq.subs[k].n : null;
     rbq.mean = rbq.total != null ? rbq.total / 20 : null;
     out.RBQ = rbq;
@@ -213,10 +218,19 @@ ND.scoring = (function () {
   }
 
   // L4b: общий индекс 0–100 (экспериментальный, не откалиброван)
-  function indices(C, S, fMax) {
+  // «Насколько мешает сейчас» по отдельным вопросам: доля и число вопросов с ответом «заметно» и «сильно»
+  function harmOf(R, filter) {
+    const hs = ND.ITEMS.filter((it) => filter(it) && ND.eligible(it, R)).map((it) => R[it.id])
+      .filter((r) => r && !r.na && r.now && r.now.I >= 2 && r.harm != null).map((r) => r.harm);
+    return { n: hs.length, n2: hs.filter((h) => h >= 2).length, mean: hs.length ? mean(hs) / 3 : 0 };
+  }
+  const isAsdItem = (it) => it.c && it.c.startsWith("ASD.");
+  const isAdhdItem = (it) => !!it.s;
+
+  function indices(C, S, fMax, hAsd, hAdhd) {
     const sNow = (cid) => C[cid].now.s;
     const A = ["ASD.A1", "ASD.A2", "ASD.A3"], B = ["ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"];
-    const imp = Math.max(fMax != null ? fMax / 3 : 0, C.BURNOUT.now.s);
+    const imp = Math.max(fMax != null ? fMax / 3 : 0, C.BURNOUT.now.s, hAsd.mean);
     const childVals = [...A, ...B].filter((x) => C[x].child.status !== ST.NODATA).map((x) => C[x].child.s);
     const top2B = B.map(sNow).sort((a, b) => b - a).slice(0, 2);
     let parts = [[0.45, mean(A.map(sNow))], [0.3, mean(top2B)], [0.1, imp]];
@@ -229,7 +243,7 @@ ND.scoring = (function () {
     const partA = (p) => mean(ND.ASRS_PART_A.map((sid) => S[sid][p].s));
     const core = (p) => 0.7 * Math.max(top5("A1", p), top5("A2", p)) + 0.3 * partA(p);
     const childND = Object.keys(S).every((s) => S[s].child.status === ST.NODATA);
-    parts = [[0.6, core("now")], [0.2, fMax != null ? fMax / 3 : 0]];
+    parts = [[0.6, core("now")], [0.2, Math.max(fMax != null ? fMax / 3 : 0, hAdhd.mean)]];
     if (!childND) parts.push([0.2, core("child")]);
     const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
     return { asd, adhd };
@@ -263,7 +277,10 @@ ND.scoring = (function () {
     const childNoData = [...A, ...B].filter((x) => st(x, "child") === ST.NODATA).length;
     const asdC = childHits >= 3 ? ST.MET : childHits >= 1 || childNoData >= 4 ? ST.PROB : ST.NO;
     const burnout = C.BURNOUT.now;
-    const asdD = fMax >= 2 || burnout.s >= P.thetaHi ? ST.MET : fMax === 1 || burnout.status === ST.PROB ? ST.PROB : fMax == null ? ST.NODATA : ST.NO;
+    const hAsd = harmOf(R, isAsdItem), hAdhd = harmOf(R, isAdhdItem);
+    // D: нарушения по сферам жизни, выгоранию или по ответам «мешает» на отдельные признаки (≥3 вопроса «заметно/сильно»)
+    const asdD = fMax >= 2 || burnout.s >= P.thetaHi || hAsd.n2 >= 3 ? ST.MET
+      : fMax === 1 || burnout.status === ST.PROB || hAsd.n2 >= 1 ? ST.PROB : fMax == null && !hAsd.n ? ST.NODATA : ST.NO;
 
     // ── СДВГ ──
     const sids = Object.keys(ND.ADHD_SYMPTOMS);
@@ -277,7 +294,7 @@ ND.scoring = (function () {
     const adhdB = nChild >= P.adhdChildDsm ? ST.MET : nChildP >= P.adhdChildDsm || nChildND >= 9 ? ST.PROB : ST.NO;
     const ctx = contextsUsed(R, (it) => !!it.s);
     const adhdC = fSpheres2 >= 2 || ctx.size >= 2 ? ST.MET : fSpheres2 === 1 || ctx.size === 1 ? ST.PROB : ST.NO;
-    const adhdD = fMax >= 2 ? ST.MET : fMax === 1 ? ST.PROB : fMax == null ? ST.NODATA : ST.NO;
+    const adhdD = fMax >= 2 || hAdhd.n2 >= 3 ? ST.MET : fMax === 1 || hAdhd.n2 >= 1 ? ST.PROB : fMax == null && !hAdhd.n ? ST.NODATA : ST.NO;
     let presentation = null;
     if (nA1 >= P.adhdAdult && nA2 >= P.adhdAdult) presentation = "комбинированная";
     else if (nA1 >= P.adhdAdult) presentation = "преимущественно невнимательная";
@@ -293,7 +310,7 @@ ND.scoring = (function () {
     }
     const asdAny = [...A, ...B].some((x) => atLeastProb(st(x, "now")));
     const adhdAny = nA1p + nA2p >= 3;
-    const idx = indices(C, S, fMax);
+    const idx = indices(C, S, fMax, hAsd, hAdhd);
 
     return {
       constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R),
