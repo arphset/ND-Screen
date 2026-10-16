@@ -283,26 +283,32 @@
   function radarBlock(E) {
     const C = E.constructs, S = E.symptoms;
     const grp = (pre, p) => { const xs = Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p]); return xs.some((x) => x.status !== ST.NODATA) ? xs.reduce((a, x) => a + x.s, 0) / xs.length : null; };
+    // короткие названия для подписей на картинке; полные — в списке под ней и в таблицах
+    const SHORT = { "ASD.A1": "Взаимность в общении", "ASD.A2": "Невербальное общение", "ASD.A3": "Отношения и правила", "ASD.B1": "Повторяющиеся действия",
+      "ASD.B2": "Неизменность, ритуалы", "ASD.B3": "Сильные интересы", "ASD.B4": "Сенсорика" };
     const axes = [
-      ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => ({ code: ND.CONSTRUCTS[cid].dsm, label: ND.CONSTRUCTS[cid].label, g: "РАС",
+      ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => ({ code: ND.CONSTRUCTS[cid].dsm, short: SHORT[cid], label: ND.CONSTRUCTS[cid].label, g: "РАС",
         now: C[cid].now.n ? C[cid].now.s : null, child: C[cid].child.n ? C[cid].child.s : null })),
-      { code: "A1", label: "Невнимательность", g: "СДВГ", now: grp("A1", "now"), child: grp("A1", "child") },
-      { code: "A2", label: "Гиперактивность и импульсивность", g: "СДВГ", now: grp("A2", "now"), child: grp("A2", "child") },
+      { code: "A1", short: "Невнимательность", label: "Невнимательность", g: "СДВГ", now: grp("A1", "now"), child: grp("A1", "child") },
+      { code: "A2", short: "Гиперактивность", label: "Гиперактивность и импульсивность", g: "СДВГ", now: grp("A2", "now"), child: grp("A2", "child") },
     ];
     if (axes.every((a) => a.now == null)) return "";
-    const W = 520, H = 440, cx = W / 2, cy = H / 2 + 4, Rr = 150, n = axes.length;
+    const W = 640, H = 470, cx = W / 2, cy = H / 2 + 6, Rr = 150, n = axes.length;
     const ang = (i) => -Math.PI / 2 + (2 * Math.PI * i) / n;
     const pt = (i, v) => [cx + Rr * v * Math.cos(ang(i)), cy + Rr * v * Math.sin(ang(i))];
     const poly = (k) => axes.map((a, i) => pt(i, a[k] || 0).map((x) => x.toFixed(1)).join(",")).join(" ");
     const ring = (v, cls) => `<polygon class="${cls}" points="${axes.map((_, i) => pt(i, v).map((x) => x.toFixed(1)).join(",")).join(" ")}"/>`;
     const spokes = axes.map((_, i) => { const [x, y] = pt(i, 1); return `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join("");
     const labels = axes.map((a, i) => {
-      const [x, y] = pt(i, 1.16), c = Math.cos(ang(i));
+      const [x, y0] = pt(i, 1.14), c = Math.cos(ang(i)), sn = Math.sin(ang(i));
+      const y = y0 - (sn < -0.5 ? 14 : sn > 0.5 ? -4 : 6);
       const anchor = Math.abs(c) < 0.2 ? "middle" : c > 0 ? "start" : "end";
-      return `<text class="lbl" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle"><tspan class="lbl-g">${a.g} ${a.code}</tspan><tspan x="${x.toFixed(1)}" dy="1.25em">${pct(a.now || 0)}${a.child != null ? ` · ${pct(a.child)}` : ""}</tspan></text>`;
+      const [nx, ny] = pt(i, 1.1);
+      return `<text class="lbl lbl-full" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle"><tspan class="lbl-g">${esc(a.short)}</tspan><tspan x="${x.toFixed(1)}" dy="1.25em">${a.g} ${a.code} · ${pct(a.now || 0)}${a.child != null ? ` / ${pct(a.child)}` : ""}</tspan></text>` +
+        `<text class="lbl-num" x="${nx.toFixed(1)}" y="${ny.toFixed(1)}" text-anchor="middle" dominant-baseline="middle">${i + 1}</text>`;
     }).join("");
     const hasChild = axes.some((a) => a.child != null);
-    const rows = axes.map((a) => `<li><b class="mono">${a.g} ${a.code}</b> ${esc(a.label)}: сейчас ${a.now == null ? "—" : pct(a.now)}, в детстве ${a.child == null ? "—" : pct(a.child)}</li>`).join("");
+    const rows = axes.map((a, i) => `<li><b class="mono">${i + 1}</b> ${esc(a.label)} <span class="muted">(${a.g} ${a.code})</span>: сейчас ${a.now == null ? "—" : pct(a.now)}, в детстве ${a.child == null ? "—" : pct(a.child)}</li>`).join("");
     return `<section class="block"><h2>Профиль</h2>
       <div class="legend"><span><i class="sw"></i>сейчас</span>${hasChild ? `<span><i class="sw child"></i>в детстве</span>` : ""}<span>кольца: пороги 40 («вероятно») и 60 («выполнен»)</span></div>
       <div class="radar"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Профиль признаков: выраженность критериев РАС и групп симптомов СДВГ сейчас и в детстве">
@@ -312,8 +318,9 @@
         ${axes.map((a, i) => { const [x, y] = pt(i, a.now || 0); return `<circle class="d-now" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`; }).join("")}
         ${labels}
       </svg></div>
-      <details class="small muted"><summary>Значения по осям</summary><ul class="stack">${rows}</ul></details>
-      <p class="small muted">Каждая ось — выраженность от 0 до 100: для РАС по критерию DSM-5-TR, для СДВГ средняя по 9 симптомам группы. Подписи у осей: сейчас · в детстве. Картинка показывает форму профиля и что изменилось с детства. Решение о критериях принимается по таблицам ниже.</p></section>`;
+      <ul class="radar-key small">${rows}</ul>
+      <details class="small muted radar-more"><summary>Значения по осям</summary><ul class="stack">${rows}</ul></details>
+      <p class="small muted">Каждая ось — выраженность от 0 до 100: для РАС по критерию DSM-5-TR, для СДВГ средняя по 9 симптомам группы. Подпись у оси: название, код критерия DSM-5-TR и баллы «сейчас / в детстве». Коды РАС: A1–A3 — социальное общение, B1–B4 — повторяющееся поведение и интересы; коды СДВГ: A1 — невнимательность, A2 — гиперактивность и импульсивность. Картинка показывает форму профиля и что изменилось с детства. Решение о критериях принимается по таблицам ниже.</p></section>`;
   }
 
   // «Что может помочь»: проверенные методики по выраженным признакам (src/support.js)
