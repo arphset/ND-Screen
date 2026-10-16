@@ -274,14 +274,27 @@
 
   function strengthsBlock(list) {
     if (!list.length) return "";
-    const shown = list.filter((x) => x.s >= ND.PARAMS.thetaLo);
-    const byId = (id) => ITEMS.find((x) => x.id === id).t;
+    const th = ND.PARAMS.thetaLo;
+    const shown = list.filter((x) => x.s >= th), rest = list.filter((x) => x.s < th);
+    const byId = (id) => ITEMS.find((x) => x.id === id);
+    const card = (x) => {
+      const d = ND.STRENGTHS[x.key];
+      const answers = x.items.map((id) => `<li>${esc(byId(id).t)}<br><span class="muted small">${esc(ND.clinician.answerLine(state.R[id]))}</span></li>`).join("");
+      return `<div class="strength">
+        <div class="row" style="justify-content:space-between"><h3>${esc(x.label)}</h3><span class="mono small">сейчас ${pct(x.s)}${x.child != null ? ` · в детстве ${pct(x.child)}` : ""}</span></div>
+        ${meter(x.s, x.child || 0)}
+        <p>${esc(d.desc)}</p>
+        <p class="small"><b>Где пригождается.</b> ${esc(d.uses)}</p>
+        <p class="small muted"><b>Связь с РАС и СДВГ.</b> ${esc(d.link)}</p>
+        ${x.also.length ? `<p class="small muted"><b>Обратная сторона.</b> В основной анкете та же черта прозвучала как трудность: ${x.also.map((id) => `«${esc(byId(id).t.replace(/\.$/, ""))}»`).join("; ")}. У одной особенности бывают обе стороны, и от обстановки зависит, какая из них проявится.</p>` : ""}
+        <div class="small"><b>Ваши ответы</b><ul class="ev">${answers}</ul></div>
+      </div>`;
+    };
     return `<section class="block"><h2>Сильные стороны</h2>
-      ${shown.length ? `<div class="strengths">${shown.map((x) => `<div class="strength"><div class="row" style="justify-content:space-between"><b>${esc(x.label)}</b><span class="mono small muted">${pct(x.s)}</span></div>
-        <div class="meter"><i style="width:${pct(x.s)}%"></i></div>
-        ${x.also.length ? `<span class="small muted">Та же черта в основной анкете звучала как трудность: «${esc(byId(x.also[0]))}». У одной особенности бывают обе стороны.</span>` : ""}</div>`).join("")}</div>`
-        : `<p class="muted">По ответам ни одна из сильных сторон списка не выражена.</p>`}
-      <p class="small muted">Домены взяты из тем Aspie-quiz о талантах и из исследований сильных сторон взрослых с РАС и СДВГ. На индексы и критерии этот блок не влияет.</p></section>`;
+      <p class="muted">Направления, которые по вашим ответам выражены (от ${pct(th)} из 100). Верхняя полоска показывает «сейчас», нижняя «в детстве».</p>
+      ${shown.length ? `<div class="strengths">${shown.map(card).join("")}</div>` : `<p class="muted">По ответам ни одно из направлений не выражено.</p>`}
+      ${rest.length ? `<p class="small muted">Не выражены по ответам: ${rest.map((x) => `${esc(x.label.toLowerCase())} (${pct(x.s)})`).join(", ")}.</p>` : ""}
+      <p class="small muted">Направления взяты из тем Aspie-quiz о талантах и из исследований сильных сторон взрослых с РАС и СДВГ. Шкала не валидирована, поэтому на индексы, критерии и общий вывод блок не влияет.</p></section>`;
   }
 
   function renderClin() {
@@ -360,7 +373,7 @@
         `  ${ND.CONSTRUCTS[c].dsm} ${ND.CONSTRUCTS[c].label}: сейчас ${pct(E.constructs[c].now.s)} (${ST_LABEL[E.constructs[c].now.status]}), детство ${pct(E.constructs[c].child.s)}`),
       `СДВГ: ${L(E.adhd.level)}, индекс ${E.adhd.index}/100. A1 ${E.adhd.nA1}/9, A2 ${E.adhd.nA2}/9, до 12 лет ${E.adhd.nChild} симптомов${E.adhd.presentation ? ", " + E.adhd.presentation : ""}.`,
       legacyText(E.legacy),
-      ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? [`Сильные стороны: ${E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => x.label.toLowerCase()).join(", ")}.`] : []),
+      ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? ["Сильные стороны (не входят в индексы):", ...E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => `  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`)] : []),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.map((f) => `  ${f.text}`),

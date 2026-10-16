@@ -166,3 +166,7 @@ pre.copybox { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0
 ul.ev { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; font-size: 0.9rem; }
 @media print { .clin .crit, .clin tr { break-inside: avoid; } }
 .strength .row { flex-wrap: nowrap; align-items: baseline; }
+.strengths { grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+.strength h3 { flex: 1 1 12rem; }
+.strength .row { flex-wrap: wrap; }
+.strength p { max-width: none; }

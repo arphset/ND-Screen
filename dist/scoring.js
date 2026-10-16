@@ -211,7 +211,7 @@ ND.scoring = (function () {
       const now = sc("now"), child = sc("child");
       if (!now.length) continue;
       const also = d.also.filter((id) => { const it = ND.ITEMS.find((x) => x.id === id); const x = it && itemScore(it, R[id], "now"); return x && x.s >= P.thetaHi; });
-      out.push({ key, label: d.label, s: mean(now), child: child.length ? mean(child) : null, also });
+      out.push({ key, label: d.label, s: mean(now), child: child.length ? mean(child) : null, also, items: items.filter((it) => R[it.id] && !R[it.id].na).map((it) => it.id) });
     }
     return out.sort((a, b) => b.s - a.s);
   }

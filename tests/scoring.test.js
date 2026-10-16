@@ -241,6 +241,8 @@ check("нет пояснений к несуществующим вопроса�
   const S = ev(R).strengths;
   check("сильные стороны сортируются по выраженности", S[0].key === "detail" && S.every((x, i) => !i || S[i - 1].s >= x.s), S);
   check("без ответов о сильных сторонах блок пуст", ev({}).strengths.length === 0);
+  for (const [k, d] of Object.entries(ND.STRENGTHS)) check(`направление ${k} описано полностью`, [d.desc, d.uses, d.link].every((x) => typeof x === "string" && x.length > 40 && !x.includes("—")), k);
+  check("у сильной стороны есть ответы-основания", S.every((x) => x.items.length >= 1));
 }
 
 // ── Отчёт для специалиста строится на любых ответах ──

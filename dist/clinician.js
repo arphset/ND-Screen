@@ -163,6 +163,20 @@ ND.clinician = (function () {
     T.push("ЧТО УТОЧНИТЬ НА ИНТЕРВЬЮ", ...topics.flatMap(([t, list]) => [`  ${t}: ${list.length}`, ...lim(list).map((it) => `    – ${it.t}`)]),
       ...(own.length ? ["  Ответы своими словами:", ...own.map(([it, t]) => `    – ${it.t}: ${t.join("; ")}`)] : []), "");
 
+    // Сильные стороны
+    const th = ND.PARAMS.thetaLo, strong = E.strengths.filter((x) => x.s >= th);
+    if (E.strengths.length) {
+      const byId = (id) => ND.ITEMS.find((x) => x.id === id);
+      h.push(`<section class="block"><h2>Сильные стороны (самоотчёт, не валидировано)</h2>
+        ${strong.length ? strong.map((x) => `<div class="crit"><div class="crit-head"><b>${esc(x.label)}</b><span class="small">сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}</span></div>
+          <ul class="ev">${x.items.map((id) => `<li>${esc(byId(id).t)}<br><span class="muted small">${esc(answerLine(R[id]))}</span></li>`).join("")}</ul>
+          ${x.also.length ? `<p class="small muted">Та же черта в анкете как трудность: ${x.also.map((id) => `«${esc(byId(id).t.replace(/\.$/, ""))}»`).join("; ")}.</p>` : ""}</div>`).join("") : `<p class="muted">Выраженных сильных сторон по ответам нет.</p>`}
+        <p class="small muted">Пригодится для формулировки рекомендаций и выбора опор в работе с пациентом. В индексы и критерии не входит.</p></section>`);
+      T.push("СИЛЬНЫЕ СТОРОНЫ (не валидировано, в индексы не входит)",
+        ...(strong.length ? strong.flatMap((x) => [`  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`,
+          ...x.items.map((id) => `    – ${byId(id).t} [${answerLine(R[id])}]`)]) : ["  выраженных нет"]), "");
+    }
+
     // Следующие шаги
     const steps = [];
     if (asd.level !== "none") steps.push("ADOS-2 (модуль 4) и ADI-R или другое интервью о развитии с родителем либо человеком, знавшим пациента в детстве.");
