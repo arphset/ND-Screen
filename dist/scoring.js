@@ -352,9 +352,13 @@ ND.scoring = (function () {
     const asdC = childHits >= 3 ? ST.MET : childHits >= 1 || childNoData >= 4 ? ST.PROB : ST.NO;
     const burnout = C.BURNOUT.now;
     const hAsd = harmOf(R, isAsdItem), hAdhd = harmOf(R, isAdhdItem);
+    // Вопросы о сферах жизни и выгорании общие для обоих направлений. Для критерия D направления они засчитываются,
+    // только если у него самого есть хоть какие-то признаки: иначе трудности из-за СДВГ или депрессии записывались бы в РАС.
+    const asdAny = [...A, ...B].some((x) => atLeastProb(st(x, "now")));
+    const fA = asdAny ? fMax : null, boA = asdAny ? burnout : { s: 0, status: ST.NO };
     // D: нарушения по сферам жизни, выгоранию или по ответам «мешает» на отдельные признаки (≥3 вопроса «заметно/сильно»)
-    const asdD = fMax >= 2 || burnout.s >= P.thetaHi || hAsd.n2 >= 3 ? ST.MET
-      : fMax === 1 || burnout.status === ST.PROB || hAsd.n2 >= 1 ? ST.PROB : fMax == null && !hAsd.n ? ST.NODATA : ST.NO;
+    const asdD = fA >= 2 || boA.s >= P.thetaHi || hAsd.n2 >= 3 ? ST.MET
+      : fA === 1 || boA.status === ST.PROB || hAsd.n2 >= 1 ? ST.PROB : fMax == null && !hAsd.n ? ST.NODATA : ST.NO;
 
     // ── СДВГ ──
     const sids = Object.keys(ND.ADHD_SYMPTOMS);
@@ -365,14 +369,17 @@ ND.scoring = (function () {
     const nChild = sids.filter((s) => S[s].child.status === ST.MET).length;
     const nChildP = sids.filter((s) => atLeastProb(S[s].child.status)).length;
     const nChildND = sids.filter((s) => S[s].child.status === ST.NODATA).length;
+    const adhdAny = nA1p + nA2p >= 3;
+    const fH = adhdAny ? fMax : null, fS2 = adhdAny ? fSpheres2 : 0;
     const adhdB = nChild >= P.adhdChildDsm ? ST.MET : nChildP >= P.adhdChildDsm || nChildND >= 9 ? ST.PROB : ST.NO;
     // «Наедине с собой» не считается отдельной обстановкой для критерия C (DSM: дом, работа или учёба, друзья, другие занятия)
     const ctx = contextsUsed(R, (it) => !!it.s);
     ctx.delete("alone");
-    const adhdC = fSpheres2 >= 2 || ctx.size >= 2 ? ST.MET : fSpheres2 === 1 || ctx.size === 1 ? ST.PROB : ST.NO;
-    const adhdD = fMax >= 2 || hAdhd.n2 >= 3 ? ST.MET : fMax === 1 || hAdhd.n2 >= 1 ? ST.PROB : fMax == null && !hAdhd.n ? ST.NODATA : ST.NO;
+    const adhdC = fS2 >= 2 || ctx.size >= 2 ? ST.MET : fS2 === 1 || ctx.size === 1 ? ST.PROB : ST.NO;
+    const adhdD = fH >= 2 || hAdhd.n2 >= 3 ? ST.MET : fH === 1 || hAdhd.n2 >= 1 ? ST.PROB : fMax == null && !hAdhd.n ? ST.NODATA : ST.NO;
     let presentation = null;
-    if (nA1 >= P.adhdAdult && nA2 >= P.adhdAdult) presentation = "комбинированная";
+    if (!atLeastProb(adhdB)) presentation = null; // тип проявления указывается только при начале в детстве
+    else if (nA1 >= P.adhdAdult && nA2 >= P.adhdAdult) presentation = "комбинированная";
     else if (nA1 >= P.adhdAdult) presentation = "преимущественно невнимательная";
     else if (nA2 >= P.adhdAdult) presentation = "преимущественно гиперактивно-импульсивная";
 
@@ -384,17 +391,20 @@ ND.scoring = (function () {
       if (anyTrait) return "subclinical";
       return "none";
     }
-    const asdAny = [...A, ...B].some((x) => atLeastProb(st(x, "now")));
-    const adhdAny = nA1p + nA2p >= 3;
     const idx = indices(C, S, fMax, hAsd, hAdhd);
+    // Начало в детстве (РАС C, СДВГ B) и нарушения (D) обязательны по DSM-5-TR. Если такой критерий явно не выполнен,
+    // индекс не поднимается выше «умеренного» (49): выраженность симптомов есть, но картина не та, что требует DSM.
+    const CAP = 49, failed = (x) => x === ST.NO;
+    const asdIndex = failed(asdC) || failed(asdD) ? Math.min(idx.asd, CAP) : idx.asd;
+    const adhdIndex = failed(adhdB) || failed(adhdD) ? Math.min(idx.adhd, CAP) : idx.adhd;
 
     return {
       constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R), strengths: strengths(R),
-      asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: idx.asd },
+      asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: asdIndex, indexRaw: idx.asd },
       adhd: {
         core: adhdCore, B: adhdB, C: adhdC, D: adhdD, nA1, nA2, nA1p, nA2p, nChild, nChildP,
         divaChild: nChild >= P.adhdChildDiva, presentation, contexts: [...ctx],
-        level: level(adhdCore, [adhdB, adhdC, adhdD], adhdAny), index: idx.adhd,
+        level: level(adhdCore, [adhdB, adhdC, adhdD], adhdAny), index: adhdIndex, indexRaw: idx.adhd,
       },
     };
   }
@@ -422,6 +432,10 @@ ND.scoring = (function () {
       code = "nt"; title = "Нейротипичный профиль";
       text = "Ответы не соответствуют критериям ни РАС, ни СДВГ, выраженных черт тоже нет.";
     }
+    if (atLeastProb(E.adhd.core) && E.adhd.B === ST.NO)
+      text += " Симптомы СДВГ есть сейчас, но по ответам их не было до 12 лет. DSM-5-TR требует начала в детстве, поэтому сначала стоит проверить другие причины: тревогу, депрессию, сон, перегрузку.";
+    if (atLeastProb(E.asd.core) && E.asd.C === ST.NO)
+      text += " Признаки РАС есть сейчас, но по ответам их не было в детстве. Для РАС это обязательное условие, поэтому стоит обсудить другие объяснения.";
     if (flags && code !== "both") text += " Отмеченные ниже состояния стоит обсудить со специалистом отдельно.";
     if (E.validity.some((f) => f.severity === "hard")) text += " Ответы местами противоречат друг другу, поэтому вывод ненадёжный: см. блок «Согласованность ответов».";
     else if (E.validity.length) text += " В ответах есть отдельные противоречия, см. блок «Согласованность ответов».";

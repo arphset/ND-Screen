@@ -62,8 +62,8 @@ ND.clinician = (function () {
     const consist = !E.validity.length ? "противоречий не найдено" : hard ? "противоречивые ответы, результат ненадёжен" : "отдельные противоречия";
     h.push(`<section class="block"><h2>Сводка</h2><div class="tbl-wrap"><table><tbody>
       <tr><td>Общий вывод</td><td><b>${esc(O.title)}</b></td></tr>
-      <tr><td>РАС</td><td>${L(asd.level)}, индекс ${asd.index}/100</td></tr>
-      <tr><td>СДВГ</td><td>${L(adhd.level)}, индекс ${adhd.index}/100${adhd.presentation ? `, ${adhd.presentation}` : ""}</td></tr>
+      <tr><td>РАС</td><td>${L(asd.level)}, индекс ${asd.index}/100${asd.indexRaw > asd.index ? ` (ограничен; без ограничения ${asd.indexRaw})` : ""}</td></tr>
+      <tr><td>СДВГ</td><td>${L(adhd.level)}, индекс ${adhd.index}/100${adhd.indexRaw > adhd.index ? ` (ограничен; без ограничения ${adhd.indexRaw})` : ""}${adhd.presentation ? `, ${adhd.presentation}` : ""}</td></tr>
       <tr><td>Согласованность</td><td>${consist} (проверено пар: ${E.validity.pairsChecked || 0})</td></tr>
       <tr><td>Камуфляж</td><td>${pct(C.CAMO.now.s)}/100; CAT-Q (пересчёт) ${r0(E.legacy.CATQ.total)}/175</td></tr>
       <tr><td>Дифференциальные флаги</td><td>${E.differential.length ? E.differential.map((d) => esc(d.label) + (d.lateOnset ? " (начало не в детстве)" : "")).join("; ") : "нет"}</td></tr>

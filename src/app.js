@@ -214,6 +214,7 @@
             `Проявления в детстве (C): ${ST_LABEL[asd.C]}`,
             `Влияние на жизнь (D): ${ST_LABEL[asd.D]}`,
             `Камуфляж: ${pct(asd.camo.s)} из 100`,
+            asd.indexRaw > asd.index ? `Индекс ограничен 49 (без ограничения ${asd.indexRaw}): не выполнено обязательное условие C или D` : "",
           ])}
           ${verdict("СДВГ", adhd.level, adhd.index, [
             `Невнимательность: ${adhd.nA1} из 9 (ещё ${adhd.nA1p - adhd.nA1} вероятно)`,
@@ -221,6 +222,7 @@
             `Симптомы до 12 лет (B): ${ST_LABEL[adhd.B]}, ${adhd.nChild} симптомов`,
             `Несколько сфер (C): ${ST_LABEL[adhd.C]}; нарушения (D): ${ST_LABEL[adhd.D]}`,
             adhd.presentation ? `Тип проявления: ${adhd.presentation}` : "",
+            adhd.indexRaw > adhd.index ? `Индекс ограничен 49 (без ограничения ${adhd.indexRaw}): не выполнено обязательное условие B или D` : "",
           ])}
         </div>
 

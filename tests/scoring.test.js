@@ -245,6 +245,30 @@ for (let k = 0; k < 300; k++) {
   check("RAADS-R: «только сейчас» = 2 балла за пункт", Math.abs(ra.total - 160) < 2, ra.total);
 }
 
+// ── Трудные профили (v0.4.4) ──
+{
+  // симптомы СДВГ только сейчас, в детстве нет
+  const late = {};
+  for (const it of ITEMS) {
+    if (it.s && it.s.startsWith("A1")) late[it.id] = { now: { I: 4, F: "always" }, child: { I: 0 }, ctx: ["work", "home"], harm: 2 };
+    else if (it.kind === "func") late[it.id] = { now: { D: 3 }, child: { D: 0 } };
+    else if (!it.rev) late[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  }
+  const E = ev(late);
+  check("позднее начало: критерий B СДВГ не выполнен", E.adhd.B === "no", E.adhd.B);
+  check("позднее начало: уровень не выше «отдельных черт»", E.adhd.level === "subclinical", E.adhd.level);
+  check("позднее начало: индекс ограничен 49", E.adhd.index <= 49 && E.adhd.indexRaw > 49, [E.adhd.index, E.adhd.indexRaw]);
+  check("позднее начало: тип проявления не указывается", E.adhd.presentation === null, E.adhd.presentation);
+  check("позднее начало: в выводе сказано про начало в детстве", /до 12 лет/.test(ND.scoring.overall(E).text), ND.scoring.overall(E).text);
+  check("трудности из-за СДВГ не дают критерий D РАС, если признаков РАС нет", E.asd.D !== "met", E.asd.D);
+  // те же симптомы, но с детства: ограничения нет
+  const early = JSON.parse(JSON.stringify(late));
+  for (const it of ITEMS) if (it.s && it.s.startsWith("A1")) early[it.id].child = { I: 4, F: "always" };
+  for (const f of ["F1", "F2", "F3", "F4", "F5"]) early[f].child = { D: 3 };
+  const E2 = ev(early);
+  check("начало в детстве: индекс не ограничен, тип указан", E2.adhd.index === E2.adhd.indexRaw && E2.adhd.presentation === "преимущественно невнимательная", [E2.adhd.index, E2.adhd.presentation]);
+}
+
 // ── Пояснения к вопросам ──
 for (const it of ITEMS) {
   const h = ND.HINTS[it.id];
