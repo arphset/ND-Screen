@@ -106,7 +106,7 @@
 
   // Дополнительные стороны ответа: показываются сразу, без раскрытия
   function extrasBlock(it, r) {
-    const unsure = `<label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>`;
+    const unsure = `<label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>${r.unsure ? `<span class="sub-label">Ответ будет учтён с запасом в обе стороны: по нему одному признак не засчитают ни как точно выполненный, ни как точно отсутствующий. В отчёте такие оценки показаны диапазоном.</span>` : ""}`;
     if (it.kind === "func" || isSimple(it)) return unsure;
     const ctx = r.ctx || [];
     return `<div class="extras">
@@ -175,7 +175,7 @@
     const asdRows = ["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => {
       const k = C[cid], d = ND.CONSTRUCTS[cid];
       return `<tr><td><b class="mono">${d.dsm}</b> ${d.label}</td><td>${meter(k.now.s, k.child.s)}</td>
-        <td>${stTag(k.now.status)} <span class="small muted mono">${pct(k.now.s)}${k.now.hi > k.now.s ? `–${pct(k.now.hi)}` : ""}</span></td>
+        <td>${stTag(k.now.status)} <span class="small muted mono">${k.now.hi > k.now.lo ? `${pct(k.now.lo)}–${pct(k.now.hi)}` : pct(k.now.s)}</span></td>
         <td>${stTag(k.child.status)} <span class="small muted mono">${pct(k.child.s)}</span></td></tr>`;
     }).join("");
     const symRows = Object.entries(ND.ADHD_SYMPTOMS).map(([sid, label]) => {
@@ -464,7 +464,7 @@
   }
 
   app.addEventListener("change", (e) => {
-    if (e.target.dataset.act === "unsure") { resp(ITEMS[state.idx].id).unsure = e.target.checked; save(); }
+    if (e.target.dataset.act === "unsure") { resp(ITEMS[state.idx].id).unsure = e.target.checked; save(); render(); }
   });
   app.addEventListener("input", (e) => {
     if (e.target.dataset.act === "text") {

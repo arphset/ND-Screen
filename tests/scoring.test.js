@@ -216,6 +216,35 @@ for (let k = 0; k < 300; k++) {
   check("одна такая ошибка → только мягкое предупреждение", !ev(R3).validity.some((f) => f.code === "inner" && f.severity === "hard"));
 }
 
+// ── Логика весов (v0.4.2) ──
+{
+  const base = () => { const R = {}; for (const it of ITEMS) if (it.c === "ASD.A1") R[it.id] = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" } }; return R; };
+  const st = (R) => ev(R).constructs["ASD.A1"].now.status;
+  check("без неуверенности A1 «выполнен»", st(base()) === "met", ev(base()).constructs["ASD.A1"].now);
+  const U = base(); for (const k in U) U[k].unsure = true;
+  check("та же картина, но везде «не уверен(а)» → «вероятно»", st(U) === "probable", ev(U).constructs["ASD.A1"].now);
+  const W = {}; for (const it of ITEMS) if (it.c === "ASD.A1") W[it.id] = { now: { I: 2, F: "rare" }, child: { I: 0 } };
+  const W2 = JSON.parse(JSON.stringify(W)); for (const k in W2) W2[k].unsure = true;
+  check("слабый признак без неуверенности → «нет»", st(W) === "no", ev(W).constructs["ASD.A1"].now);
+  check("слабый признак с неуверенностью → «вероятно» (симметрично)", st(W2) === "probable", ev(W2).constructs["ASD.A1"].now);
+  check("неуверенность не меняет сам балл", ev(U).constructs["ASD.A1"].now.s === ev(base()).constructs["ASD.A1"].now.s);
+
+  const it = ITEMS.find((x) => x.id === "A1-1");
+  const r0 = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" } }, r2 = { ...r0, mask: 2 };
+  check("маскировка повышает балл «сейчас»", ND.scoring.itemScore(it, r2, "now").s > ND.scoring.itemScore(it, r0, "now").s);
+  check("маскировка не трогает балл «в детстве»", ND.scoring.itemScore(it, r2, "child").s === ND.scoring.itemScore(it, r0, "child").s);
+
+  const A = {}; for (const x of ITEMS) if (x.s) A[x.id] = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" }, ctx: ["alone"] };
+  check("«наедине с собой» не даёт критерий C СДВГ", ev(A).adhd.contexts.length === 0 && ev(A).adhd.C !== "met", ev(A).adhd.contexts);
+
+  const q = {}; for (const x of ITEMS.filter((y) => (y.src || "").includes("AQ."))) q[x.id] = { now: { I: 2, F: "often" }, child: { I: 2, F: "often" } };
+  const aq = ev(q).legacy.AQ.total;
+  check("AQ: все ответы «частично» ≈ середина шкалы (25)", Math.abs(aq - 25) < 1.5, aq);
+  const q4 = {}; for (const x of ITEMS.filter((y) => (y.src || "").includes("RAADS."))) q4[x.id] = { now: { I: 4, F: "always" }, child: { I: 0 } };
+  const ra = ev(q4).legacy.RAADS;
+  check("RAADS-R: «только сейчас» = 2 балла за пункт", Math.abs(ra.total - 160) < 2, ra.total);
+}
+
 // ── Пояснения к вопросам ──
 for (const it of ITEMS) {
   const h = ND.HINTS[it.id];

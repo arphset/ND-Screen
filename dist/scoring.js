@@ -12,7 +12,6 @@ ND.PARAMS = {
   thetaLo: 0.4,    // порог «вероятно»
   unsureBand: 0.2, // ширина интервала для неуверенных ответов
   minCoverage: 0.5,
-  presentLegacy: 0.45, // с какого балла пункт считается «присутствует» при пересчёте в старые тесты
   adhdAdult: 5,    // DSM-5-TR, 17+ лет
   adhdChildDsm: 3, // «несколько симптомов до 12 лет»
   adhdChildDiva: 6,
@@ -51,17 +50,21 @@ ND.scoring = (function () {
     if (item.rev) return { s: 1 - In, lo: 1 - In, hi: 1 - In };
     const Fn = p.F ? ND.FREQ[p.F] : p.I >= 2 ? 0.5 : 0.2;
     let s = In * (0.5 + 0.5 * Fn);
-    const m = r.mask || 0;
-    // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует
+    // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует.
+    // Вопрос «скрываете ли вы» задан про настоящее, поэтому к ответам о детстве поправка не применяется.
+    const m = period === "now" ? r.mask || 0 : 0;
     if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s) * In;
     const band = r.unsure ? P.unsureBand : 0;
     return { s, lo: Math.max(0, s - band), hi: Math.min(1, s + band) };
   }
 
+  // Статус по интервалу [lo, hi]. Без «не уверен(а)» интервал сжат в точку и решает сам балл.
+  // «Выполнен» — весь интервал не ниже верхнего порога; «нет» — весь интервал ниже нижнего;
+  // если неуверенность не позволяет ни подтвердить, ни исключить, статус «вероятно».
   function classify(agg, coverage, extraOk = true) {
     if (coverage < P.minCoverage) return ST.NODATA;
-    if (agg.s >= P.thetaHi && extraOk) return ST.MET;
-    if (agg.s >= P.thetaLo || agg.hi >= P.thetaHi) return ST.PROB;
+    if (agg.lo >= P.thetaHi && extraOk) return ST.MET;
+    if (agg.s >= P.thetaLo || agg.hi >= P.thetaLo) return ST.PROB;
     return ST.NO;
   }
   const atLeastProb = (st) => st === ST.MET || st === ST.PROB;
@@ -246,14 +249,17 @@ ND.scoring = (function () {
       return { subs, total: used ? total : null, items: used };
     }
 
-    const present = (it, r, period) => { const sc = itemScore(it, r, period); return sc ? sc.s >= P.presentLegacy : null; };
+    // Оригиналы спрашивают только согласие, без частоты, поэтому берётся уровень согласия:
+    // «в основном» и «полностью» = да (1), «частично» = середина шкалы (0.5), «скорее нет» и «совсем нет» = нет (0).
+    const present = (r, period) => { const p = r[period]; return !p || p.unknown || p.I == null ? null : p.I >= 3 ? 1 : p.I === 2 ? 0.5 : 0; };
+    // RAADS-R: 3 = верно сейчас и в детстве, 2 = только сейчас, 1 = только в детстве, 0 = никогда, то есть 2·сейчас + 1·детство
     out.RAADS = build("RAADS", (it, r) => {
-      const n = present(it, r, "now");
-      let c = present(it, r, "child");
+      const n = present(r, "now");
+      let c = present(r, "child");
       if (c == null) c = n; // «не помню»: считаем как сейчас
-      return n && c ? 3 : n ? 2 : c ? 1 : 0;
+      return 2 * n + c;
     });
-    out.AQ = build("AQ", (it, r) => (present(it, r, "now") ? 1 : 0));
+    out.AQ = build("AQ", (it, r) => present(r, "now"));
     out.CATQ = build("CATQ", (it, r) => 1 + 1.5 * r.now.I);
     const rbq = build("RBQ", (it, r) => (r.now.I < 2 ? 1 : r.now.F === "often" || r.now.F === "always" ? 3 : 2));
     for (const k of Object.keys(rbq.subs)) rbq.subs[k].mean = rbq.subs[k].est != null ? rbq.subs[k].est / rbq.subs[k].n : null;
@@ -291,10 +297,16 @@ ND.scoring = (function () {
     const sNow = (cid) => C[cid].now.s;
     const A = ["ASD.A1", "ASD.A2", "ASD.A3"], B = ["ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"];
     const imp = Math.max(fMax != null ? fMax / 3 : 0, C.BURNOUT.now.s, hAsd.mean);
-    const childVals = [...A, ...B].filter((x) => C[x].child.status !== ST.NODATA).map((x) => C[x].child.s);
-    const top2B = B.map(sNow).sort((a, b) => b - a).slice(0, 2);
-    let parts = [[0.45, mean(A.map(sNow))], [0.3, mean(top2B)], [0.1, imp]];
-    if (childVals.length) parts.push([0.15, mean(childVals)]);
+    // ядро: среднее A1–A3 (нужны все три) и среднее двух сильнейших B (нужны два из четырёх), в пропорции 0.45 : 0.3
+    const coreOf = (p) => {
+      const has = (x) => C[x][p].status !== ST.NODATA;
+      const a = A.filter(has).map((x) => C[x][p].s), b = B.filter(has).map((x) => C[x][p].s).sort((x, y) => y - x).slice(0, 2);
+      if (!a.length && !b.length) return null;
+      return (0.45 * (a.length ? mean(a) : 0) + 0.3 * (b.length ? mean(b) : 0)) / 0.75;
+    };
+    let parts = [[0.75, coreOf("now") || 0], [0.1, imp]];
+    const childCore = coreOf("child");
+    if (childCore != null) parts.push([0.15, childCore]);
     const asd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
 
     const top5 = (pre, p) => mean(Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p].s).sort((a, b) => b - a).slice(0, 5));
@@ -352,7 +364,9 @@ ND.scoring = (function () {
     const nChildP = sids.filter((s) => atLeastProb(S[s].child.status)).length;
     const nChildND = sids.filter((s) => S[s].child.status === ST.NODATA).length;
     const adhdB = nChild >= P.adhdChildDsm ? ST.MET : nChildP >= P.adhdChildDsm || nChildND >= 9 ? ST.PROB : ST.NO;
+    // «Наедине с собой» не считается отдельной обстановкой для критерия C (DSM: дом, работа или учёба, друзья, другие занятия)
     const ctx = contextsUsed(R, (it) => !!it.s);
+    ctx.delete("alone");
     const adhdC = fSpheres2 >= 2 || ctx.size >= 2 ? ST.MET : fSpheres2 === 1 || ctx.size === 1 ? ST.PROB : ST.NO;
     const adhdD = fMax >= 2 || hAdhd.n2 >= 3 ? ST.MET : fMax === 1 || hAdhd.n2 >= 1 ? ST.PROB : fMax == null && !hAdhd.n ? ST.NODATA : ST.NO;
     let presentation = null;
