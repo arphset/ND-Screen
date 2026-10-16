@@ -4,7 +4,7 @@ import pathlib, shutil
 root = pathlib.Path(__file__).parent
 src, dist, art = root / "src", root / "dist", root / "artifact"
 FONTS = '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Commissioner:wght@500;600;700&family=Golos+Text:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">'
-SCRIPTS = "".join(f'<script src="{n}"></script>' for n in ["items.js", "scoring.js", "sample.js", "app.js"])
+SCRIPTS = "".join(f'<script src="{n}"></script>' for n in ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "app.js"])
 BODY = '<main id="app"></main><noscript>Для работы анкеты нужен JavaScript.</noscript>'
 TITLE = "<title>ND-Screen</title>"
 META = '<meta name="description" content="Экспериментальный скрининг признаков РАС и СДВГ у взрослых с учётом детства">'

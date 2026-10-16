@@ -156,3 +156,13 @@ pre.copybox { white-space: pre-wrap; font-family: var(--font-mono); font-size: 0
 .consist.ok { border-left: 4px solid var(--accent); }
 .consist.warn { border-left: 4px solid var(--warn); }
 .consist.bad { border-left: 4px solid var(--warn); background: var(--warn-soft); }
+.hint { font-size: 0.9rem; color: var(--muted); background: var(--bg); border-radius: 8px; padding: 10px 12px; max-width: none; }
+.hint b { color: var(--ink); font-weight: 600; }
+.strengths { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.strength { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: grid; gap: 8px; align-content: start; }
+.crit { border-top: 1px solid var(--line); padding-top: 10px; display: grid; gap: 6px; }
+.crit-head { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; }
+.crit-head > span:first-of-type { font-weight: 600; flex: 1 1 14rem; }
+ul.ev { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; font-size: 0.9rem; }
+@media print { .clin .crit, .clin tr { break-inside: avoid; } }
+.strength .row { flex-wrap: nowrap; align-items: baseline; }

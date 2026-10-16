@@ -17,6 +17,7 @@
     subclinical: ["Отдельные черты", "Есть выраженные черты, но картина не складывается в критерии."],
     none: ["Не соответствует", "Признаки ниже порогов критериев."],
   };
+  ND.UI = { I_LABELS, F_OPTS, D_LABELS, CTX, MASK, ST_LABEL, LEVEL };
   const embedded = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
 
   let state = load() || fresh();
@@ -30,7 +31,7 @@
 
   const ITEMS = ND.ITEMS;
   const resp = (id) => (state.R[id] = state.R[id] || { now: {}, child: {} });
-  const isSimple = (it) => it.rev || it.kind === "diff";
+  const isSimple = (it) => it.rev || it.kind === "diff" || it.kind === "strength";
   const open = (it) => ND.eligible(it, state.R);
   const openItems = () => ITEMS.filter(open);
   const nextOpen = (from, dir) => { for (let j = from + dir; j >= 0 && j < ITEMS.length; j += dir) if (open(ITEMS[j])) return j; return -1; };
@@ -48,6 +49,7 @@
   function render() {
     if (state.view === "intro") renderIntro();
     else if (state.view === "q") renderQ();
+    else if (state.view === "clin") renderClin();
     else renderReport();
   }
 
@@ -55,7 +57,7 @@
     const done = openItems().filter(answered).length;
     app.innerHTML = `
       <div class="wrap intro">
-        <span class="eyebrow">Экспериментальный скрининг · версия 0.3</span>
+        <span class="eyebrow">Экспериментальный скрининг · версия 0.4</span>
         <h1>ND-Screen</h1>
         <p>Анкета о признаках аутизма (РАС) и СДВГ у взрослых. Она собирает содержание RAADS-R, AQ, CAT-Q, ASRS, RBQ-2A и доменов ADOS-2, ADI-R, DIVA-5 и сводит ответы к критериям DSM-5-TR.</p>
         <p>Вместо «да» или «нет» на каждый вопрос можно ответить точнее:</p>
@@ -68,7 +70,8 @@
         <ul class="muted small">
           <li>От ${ITEMS.filter((x) => !x.fu).length} до ${ITEMS.length} вопросов: уточняющие появляются, только если признак у вас есть. Примерно 25–45 минут. Можно прерваться: ответы сохраняются в этом браузере и никуда не отправляются.</li>
           <li>Результат описывает, насколько ответы соответствуют критериям. Это материал для разговора со специалистом, а не диагноз: ADOS-2 и ADI-R проводятся только очно.</li>
-          <li>Если вопрос непонятен или не про вас, есть кнопка «Неприменимо».</li>
+          <li>Под каждым вопросом есть пояснение с примерами. Если вопрос всё равно непонятен или не про вас, есть кнопка «Неприменимо».</li>
+          <li>В конце будет отдельный отчёт для специалиста: по критериям DSM-5-TR, с вашими ответами под каждым критерием.</li>
         </ul>
         <div class="row">
           <button class="btn primary" data-act="start">${done ? `Продолжить (отвечено ${done})` : "Начать анкету"}</button>
@@ -139,6 +142,8 @@
         </div>
         <div class="card">
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
+          ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
+          ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
           ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r)}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
@@ -196,7 +201,7 @@
     app.innerHTML = `
       <div class="wrap wide">
         <div class="stack">
-          <span class="eyebrow">${state.sample ? "Пример отчёта на вымышленных ответах" : "Отчёт по вашим ответам"} · ND-Screen 0.3</span>
+          <span class="eyebrow">${state.sample ? "Пример отчёта на вымышленных ответах" : "Отчёт по вашим ответам"} · ND-Screen 0.4</span>
           <h1>Профиль признаков</h1>
           <p class="muted">Это структурированный самоотчёт, сведённый к критериям DSM-5-TR. Его можно показать психиатру или клиническому психологу как отправную точку; диагноз ставит специалист.</p>
         </div>
@@ -220,6 +225,8 @@
         </div>
 
         ${consistencyBlock(E.validity)}
+
+        ${strengthsBlock(E.strengths)}
 
         ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
@@ -254,6 +261,7 @@
 
         <div class="row no-print">
           ${state.sample ? `<button class="btn primary" data-act="home">Вернуться и начать анкету</button>` : `<button class="btn primary" data-act="resume">Вернуться к вопросам</button>`}
+          <button class="btn" data-act="clin">Отчёт для специалиста</button>
           <button class="btn" data-act="copy-summary">Скопировать сводку</button>
           <button class="btn" data-act="export">${embedded ? "Показать данные (JSON)" : "Скачать данные (JSON)"}</button>
           ${embedded ? "" : `<button class="btn" data-act="print">Печать или PDF</button>`}
@@ -262,6 +270,28 @@
         ${confirmReset ? `<div class="confirm no-print"><span>Удалить все ответы из этого браузера? Это нельзя отменить.</span><div class="row"><button class="btn primary" data-act="reset-yes">Удалить ответы</button><button class="btn" data-act="reset-no">Отмена</button></div></div>` : ""}
         <div id="export-box"></div>
       </div>`;
+  }
+
+  function strengthsBlock(list) {
+    if (!list.length) return "";
+    const shown = list.filter((x) => x.s >= ND.PARAMS.thetaLo);
+    const byId = (id) => ITEMS.find((x) => x.id === id).t;
+    return `<section class="block"><h2>Сильные стороны</h2>
+      ${shown.length ? `<div class="strengths">${shown.map((x) => `<div class="strength"><div class="row" style="justify-content:space-between"><b>${esc(x.label)}</b><span class="mono small muted">${pct(x.s)}</span></div>
+        <div class="meter"><i style="width:${pct(x.s)}%"></i></div>
+        ${x.also.length ? `<span class="small muted">Та же черта в основной анкете звучала как трудность: «${esc(byId(x.also[0]))}». У одной особенности бывают обе стороны.</span>` : ""}</div>`).join("")}</div>`
+        : `<p class="muted">По ответам ни одна из сильных сторон списка не выражена.</p>`}
+      <p class="small muted">Домены взяты из тем Aspie-quiz о талантах и из исследований сильных сторон взрослых с РАС и СДВГ. На индексы и критерии этот блок не влияет.</p></section>`;
+  }
+
+  function renderClin() {
+    const C = ND.clinician.build(state.R);
+    app.innerHTML = `<div class="wrap wide clin">
+      <div class="row no-print"><button class="btn" data-act="report">Назад к отчёту</button>
+        <button class="btn" data-act="clin-copy">Скопировать текстом</button>
+        ${embedded ? "" : `<button class="btn" data-act="print">Печать или PDF</button>`}</div>
+      ${C.html}
+      <div id="export-box"></div></div>`;
   }
 
   function verdict(name, level, index, lines) {
@@ -323,13 +353,14 @@
     const E = ND.scoring.evaluate(state.R);
     const L = (lv) => LEVEL[lv][0];
     const lines = [
-      "ND-Screen 0.3, экспериментальный самоотчёт (не диагноз)",
+      "ND-Screen 0.4, экспериментальный самоотчёт (не диагноз)",
       `Общий вывод: ${ND.scoring.overall(E).title}. ${ND.scoring.overall(E).text}`,
       `РАС: ${L(E.asd.level)}, индекс ${E.asd.index}/100. Ядро ${ST_LABEL[E.asd.core]}, детство ${ST_LABEL[E.asd.C]}, нарушения ${ST_LABEL[E.asd.D]}, камуфляж ${pct(E.asd.camo.s)}/100.`,
       ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((c) =>
         `  ${ND.CONSTRUCTS[c].dsm} ${ND.CONSTRUCTS[c].label}: сейчас ${pct(E.constructs[c].now.s)} (${ST_LABEL[E.constructs[c].now.status]}), детство ${pct(E.constructs[c].child.s)}`),
       `СДВГ: ${L(E.adhd.level)}, индекс ${E.adhd.index}/100. A1 ${E.adhd.nA1}/9, A2 ${E.adhd.nA2}/9, до 12 лет ${E.adhd.nChild} симптомов${E.adhd.presentation ? ", " + E.adhd.presentation : ""}.`,
       legacyText(E.legacy),
+      ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? [`Сильные стороны: ${E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => x.label.toLowerCase()).join(", ")}.`] : []),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.map((f) => `  ${f.text}`),
@@ -392,7 +423,7 @@
         return;
       }
       case "export": {
-        const data = JSON.stringify({ version: "0.3", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R) }, null, 2);
+        const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R) }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
@@ -400,6 +431,12 @@
         return;
       }
       case "print": window.print(); return;
+      case "clin": state.view = "clin"; save(); render(); window.scrollTo(0, 0); return;
+      case "clin-copy": {
+        const txt = ND.clinician.build(state.R).text;
+        navigator.clipboard.writeText(txt).then(() => toast("Отчёт скопирован"), () => showBox(txt));
+        return;
+      }
       case "reset": confirmReset = true; render(); return;
       case "reset-no": confirmReset = false; render(); return;
       case "reset-yes": confirmReset = false; state = fresh(); save(); render(); return;

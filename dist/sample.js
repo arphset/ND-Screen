@@ -29,6 +29,8 @@ ND.sampleResponses = function () {
   set(["MO-1"], () => t(2, "some", 3, "often"));
   set(["EX-1", "EX-2", "EX-3"], (i) => t([2, 4, 3][i], "often", [3, 4, 2][i], "often"));
   set(["DF-1", "DF-2", "DF-3", "DF-4", "DF-5", "DF-6"], (i) => t([3, 1, 2, 0, 0, 2][i], "often", [1, 1, 1, 0, 0, 1][i], "rare"));
+  set(["ST-1", "ST-2", "ST-3", "ST-4", "ST-5", "ST-6", "ST-7", "ST-8", "ST-9", "ST-10", "ST-11"], (i) =>
+    t([4, 4, 3, 3, 3, 4, 3, 2, 1, 1, 3][i], "often", [4, 3, 3, 4, 2, 3, null, 2, 1, 1, 2][i], "often"));
   // обратные вопросы: зеркально к своей паре
   ND.ITEMS.forEach((it) => {
     if (!it.rev || R[it.id] || !R[it.pair]) return;

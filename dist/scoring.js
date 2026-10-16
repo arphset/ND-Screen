@@ -169,7 +169,7 @@ ND.scoring = (function () {
         text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
 
     // 4. Однообразие, скорость, «неприменимо»
-    const Is = ND.ITEMS.filter((x) => x.kind !== "func").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
+    const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength").map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
       const counts = {};
       Is.forEach((v) => (counts[v] = (counts[v] || 0) + 1));
@@ -200,6 +200,20 @@ ND.scoring = (function () {
       }
     }
     return out;
+  }
+
+  // Сильные стороны: среднее по пунктам домена. В индексы, критерии и согласованность не входят.
+  function strengths(R) {
+    const out = [];
+    for (const [key, d] of Object.entries(ND.STRENGTHS)) {
+      const items = ND.ITEMS.filter((it) => it.kind === "strength" && it.st === key);
+      const sc = (p) => items.map((it) => itemScore(it, R[it.id], p)).filter(Boolean).map((x) => x.s);
+      const now = sc("now"), child = sc("child");
+      if (!now.length) continue;
+      const also = d.also.filter((id) => { const it = ND.ITEMS.find((x) => x.id === id); const x = it && itemScore(it, R[id], "now"); return x && x.s >= P.thetaHi; });
+      out.push({ key, label: d.label, s: mean(now), child: child.length ? mean(child) : null, also });
+    }
+    return out.sort((a, b) => b.s - a.s);
   }
 
   // L3a: пересчёт в шкалы оригинальных тестов.
@@ -359,7 +373,7 @@ ND.scoring = (function () {
     const idx = indices(C, S, fMax, hAsd, hAdhd);
 
     return {
-      constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R),
+      constructs: C, symptoms: S, func: F, validity: valid, differential: diff, legacy: legacy(R), strengths: strengths(R),
       asd: { core: asdCore, C: asdC, D: asdD, bMet, bProb, childHits, level: level(asdCore, [asdC, asdD], asdAny), camo: C.CAMO.now, index: idx.asd },
       adhd: {
         core: adhdCore, B: adhdB, C: adhdC, D: adhdD, nA1, nA2, nA1p, nA2p, nChild, nChildP,

@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "scoring.js", "sample.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -20,6 +20,7 @@ for (const it of ITEMS) {
   if (it.rev) { check(`обратный ${it.id} ссылается на существующий пункт`, ids.includes(it.pair)); continue; }
   if (it.kind === "func") { check(`${it.id}: сфера жизни`, !!ND.LIFE_SPHERES[it.f]); continue; }
   if (it.kind === "diff") { check(`${it.id}: флаг`, !!ND.DIFF_LABELS[it.d]); continue; }
+  if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
   for (const t of (it.src || "").split(" ").filter(Boolean)) {
@@ -213,6 +214,58 @@ for (let k = 0; k < 300; k++) {
   const R3 = consistent();
   const one = ITEMS.find((x) => x.id === "A1-1"); R3[one.id].now = { I: 0 }; R3[one.id].harm = 3;
   check("одна такая ошибка → только мягкое предупреждение", !ev(R3).validity.some((f) => f.code === "inner" && f.severity === "hard"));
+}
+
+// ── Пояснения к вопросам ──
+for (const it of ITEMS) {
+  const h = ND.HINTS[it.id];
+  check(`${it.id}: есть пояснение`, typeof h === "string" && h.length >= 40 && h.length <= 260, h);
+}
+check("нет пояснений к несуществующим вопросам", Object.keys(ND.HINTS).every((id) => ids.includes(id)));
+
+// ── Сильные стороны не влияют на подсчёт ──
+{
+  for (const domain of Object.values(ND.STRENGTHS)) for (const id of domain.also) check(`сильная сторона ссылается на ${id}`, ids.includes(id));
+  const strip = (E) => JSON.stringify({ asd: E.asd, adhd: E.adhd, c: E.constructs, s: E.symptoms, v: E.validity, l: E.legacy, d: E.differential });
+  let same = 0;
+  for (let k = 0; k < 100; k++) {
+    const base = Math.floor(rnd() * 5);
+    const R = profile(() => Math.max(0, Math.min(4, base + pick([-1, 0, 1]))));
+    const a = strip(ev(R));
+    for (const it of ITEMS.filter((x) => x.kind === "strength")) R[it.id] = answer(it, 4 - base);
+    if (strip(ev(R)) === a) same++;
+  }
+  check("ответы о сильных сторонах не меняют индексы, критерии и согласованность", same === 100, same);
+  const R = {};
+  for (const it of ITEMS.filter((x) => x.kind === "strength")) R[it.id] = { now: { I: it.st === "detail" ? 4 : 1, F: "often" }, child: { I: 1 } };
+  const S = ev(R).strengths;
+  check("сильные стороны сортируются по выраженности", S[0].key === "detail" && S.every((x, i) => !i || S[i - 1].s >= x.s), S);
+  check("без ответов о сильных сторонах блок пуст", ev({}).strengths.length === 0);
+}
+
+// ── Отчёт для специалиста строится на любых ответах ──
+{
+  ND.UI = {
+    I_LABELS: ["Совсем нет", "Скорее нет", "Частично", "В основном да", "Полностью да"],
+    F_OPTS: [["rare", "Редко"], ["some", "Иногда"], ["often", "Часто"], ["always", "Почти всегда"]],
+    D_LABELS: ["Не мешали", "Немного", "Заметно", "Сильно"],
+    CTX: [["home", "Дома"], ["work", "Работа или учёба"], ["friends", "С друзьями"], ["strangers", "С незнакомыми"], ["alone", "Наедине с собой"]],
+    ST_LABEL: { met: "выполнен", probable: "вероятно", no: "нет", nodata: "нет данных" },
+    LEVEL: { high: ["Высокое соответствие"], partial: ["Частичное соответствие"], subclinical: ["Отдельные черты"], none: ["Не соответствует"] },
+  };
+  let errs = 0, bad = 0;
+  const profiles = [{}, ND.sampleResponses()];
+  for (let k = 0; k < 60; k++) { const base = Math.floor(rnd() * 5); profiles.push(profile(() => Math.max(0, Math.min(4, base + pick([-1, 0, 1]))))); }
+  for (const R of profiles) {
+    try {
+      const C = ND.clinician.build(R);
+      if (/undefined|NaN/.test(C.html + C.text) || !/A1/.test(C.text) || !/СЛЕДУЮЩИЕ ШАГИ/.test(C.text)) bad++;
+    } catch (e) { errs++; if (errs === 1) console.log(e); }
+  }
+  check("отчёт для специалиста строится без ошибок", errs === 0, errs);
+  check("в отчёте для специалиста нет undefined/NaN и есть все разделы", bad === 0, bad);
+  const C = ND.clinician.build(ND.sampleResponses());
+  check("в отчёте для специалиста под критерием есть ответы-основания", /сейчас: (в основном да|полностью да)/.test(C.text), C.text.slice(0, 400));
 }
 
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
