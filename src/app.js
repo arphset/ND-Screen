@@ -39,8 +39,9 @@
     const r = state.R[it.id];
     if (!r) return false;
     if (r.na) return true;
-    if (it.kind === "func") return r.now.D != null && (r.child.D != null || r.child.unknown);
-    return r.now.I != null && (r.child.I != null || r.child.unknown);
+    const f = it.kind === "func" ? "D" : "I";
+    const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
+    return ok(r.now) && ok(r.child);
   }
 
   // ───────── render ─────────
@@ -62,7 +63,7 @@
           <div><b>Насколько</b><span class="muted small">от «совсем нет» до «полностью», включая «частично»</span></div>
           <div><b>Как часто</b><span class="muted small">редко, иногда, часто, почти всегда</span></div>
           <div><b>Когда</b><span class="muted small">отдельно сейчас и в детстве до 12 лет</span></div>
-          <div><b>Скрываете ли</b><span class="muted small">признак может быть, даже если его не видно снаружи</span></div>
+          <div><b>Своими словами</b><span class="muted small">если ни один вариант не подходит, опишите сами; есть и «не помню»</span></div>
         </div>
         <ul class="muted small">
           <li>От ${ITEMS.filter((x) => !x.fu).length} до ${ITEMS.length} вопросов: уточняющие появляются, только если признак у вас есть. Примерно 25–45 минут. Можно прерваться: ответы сохраняются в этом браузере и никуда не отправляются.</li>
@@ -88,33 +89,16 @@
     const val = isFunc ? pr.D : pr.I;
     let html = `<fieldset class="period"><legend>${PERIOD_LABEL[p]}</legend>`;
     html += isFunc ? scaleBtns(p, val, D_LABELS, "D", "four") : scaleBtns(p, val, I_LABELS, "I");
-    if (p === "child") html += `<div class="chips"><button class="chip" data-act="unknown" aria-pressed="${!!pr.unknown}">Не помню</button></div>`;
+    html += `<div class="chips">
+      <button class="chip" data-act="custom" data-p="${p}" aria-pressed="${!!pr.custom}">Свой ответ</button>
+      <button class="chip" data-act="unknown" data-p="${p}" aria-pressed="${!!pr.unknown}">Не помню</button></div>`;
+    if (pr.custom) html += `<div class="sub"><label class="sub-label" for="text-${it.id}-${p}">Опишите своими словами. Если можете, отметьте и вариант выше: тогда ответ попадёт в подсчёт баллов.</label>
+      <textarea id="text-${it.id}-${p}" data-act="text" data-p="${p}" placeholder="Например: в детстве только в школе, дома нет">${esc(pr.text || "")}</textarea></div>`;
     if (!isFunc && !isSimple(it) && pr.I >= 2) {
       html += `<div class="sub"><span class="sub-label">Как часто это бывает${p === "child" ? " (было)" : ""}?</span><div class="chips">${F_OPTS.map(([k, l]) =>
         `<button class="chip" data-act="freq" data-p="${p}" data-v="${k}" aria-pressed="${pr.F === k}">${l}</button>`).join("")}</div></div>`;
     }
     return html + "</fieldset>";
-  }
-
-  function moreBlock(it, r) {
-    if (it.kind === "func" || isSimple(it)) {
-      return `<label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>`;
-    }
-    const open = r._open || (r.now.I >= 3) || (r.child.I >= 3);
-    const ctx = r.ctx || [];
-    return `<details class="more" ${open ? "open" : ""} data-act="toggle-more">
-      <summary>Подробнее: где, скрываю ли, мешает ли</summary>
-      <div class="more-body">
-        <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
-          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}</div></div>
-        <div class="sub"><span class="sub-label">Скрываете ли вы это от окружающих?</span><div class="chips">${MASK.map((l, i) =>
-          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${(r.mask || 0) === i && r.mask != null}">${l}</button>`).join("")}</div></div>
-        <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
-          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}</div></div>
-        <label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>
-        <div class="sub"><label class="sub-label" for="note-${it.id}">Пример из жизни (по желанию, попадёт в отчёт)</label>
-          <textarea id="note-${it.id}" data-act="note" placeholder="Например: в офисе без наушников не могу работать">${esc(r.note || "")}</textarea></div>
-      </div></details>`;
   }
 
   function renderQ() {
@@ -127,18 +111,19 @@
     const done = opened.filter(answered).length;
     const pct = Math.round((done / opened.length) * 100);
     const isLast = nextOpen(state.idx, 1) === -1;
+    const closedFu = ITEMS.filter((x) => x.fu && !open(x) && ITEMS.indexOf(x) > state.idx).length;
     app.innerHTML = `
       <div class="wrap">
         <div class="progress">
           <div class="row" style="justify-content:space-between">
             <span class="eyebrow">${esc(sec.title)} · ${pos} из ${secItems.length}</span>
-            <span class="small muted mono">${done}/${opened.length}</span>
+            <span class="small muted mono" title="Уточняющие вопросы добавляются, если признак у вас есть">${done}/${opened.length}${closedFu ? ` <span class="muted">(+ до ${closedFu} уточняющих)</span>` : ""}</span>
           </div>
           <div class="bar"><i style="width:${pct}%"></i></div>
         </div>
         <div class="card">
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child") + moreBlock(it, r)}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : periodBlock(it, r, "now") + periodBlock(it, r, "child")}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -181,8 +166,9 @@
       const v = (d) => (d == null ? `<span class="muted">—</span>` : D_LABELS[d]);
       return `<tr><td>${l}</td><td>${v(x.now)}</td><td>${v(x.child)}</td></tr>`;
     }).join("");
-    const notes = ITEMS.filter((it) => state.R[it.id] && state.R[it.id].note).map((it) =>
-      `<li><span class="muted small">${esc(it.t)}</span><br>${esc(state.R[it.id].note)}</li>`).join("");
+    const textsOf = (r) => [r.note, r.now && r.now.custom && r.now.text && "Сейчас: " + r.now.text, r.child && r.child.custom && r.child.text && "В детстве: " + r.child.text].filter((x) => x && x.trim());
+    const notes = ITEMS.filter((it) => state.R[it.id] && textsOf(state.R[it.id]).length).map((it) =>
+      `<li><span class="muted small">${esc(it.t)}</span><br>${textsOf(state.R[it.id]).map(esc).join("<br>")}</li>`).join("");
 
     const gaps = [];
     if (done < opened.length) gaps.push(`Отвечено ${done} из ${opened.length} открытых вопросов. Неотвеченные в расчёт не входят.`);
@@ -243,7 +229,7 @@
           <div class="tbl-wrap"><table><thead><tr><th>Сфера</th><th>Сейчас</th><th>В детстве</th></tr></thead><tbody>${fRows}</tbody></table></div>
         </section>
 
-        ${notes ? `<section class="block"><h2>Ваши примеры</h2><ul class="stack">${notes}</ul></section>` : ""}
+        ${notes ? `<section class="block"><h2>Ваши ответы своими словами</h2><ul class="stack">${notes}</ul></section>` : ""}
 
         <section class="block"><h2>Пробелы</h2><ul class="stack muted">${gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></section>
 
@@ -351,11 +337,12 @@
       case "report": state.view = "report"; save(); render(); window.scrollTo(0, 0); return;
       case "set": {
         const p = b.dataset.p, f = b.dataset.f, v = +b.dataset.v;
-        r[p][f] = v; if (p === "child") r.child.unknown = false;
+        r[p][f] = v; r[p].unknown = false;
         if (f === "I" && v < 2) delete r[p].F;
         break;
       }
-      case "unknown": r.child = r.child.unknown ? {} : { unknown: true }; break;
+      case "unknown": { const p = b.dataset.p; r[p] = r[p].unknown ? {} : { unknown: true }; break; }
+      case "custom": { const p = b.dataset.p; r[p].custom = !r[p].custom; r[p].unknown = false; break; }
       case "freq": r[b.dataset.p].F = b.dataset.v; break;
       case "ctx": { const c = r.ctx || (r.ctx = []); const i = c.indexOf(b.dataset.v); i >= 0 ? c.splice(i, 1) : c.push(b.dataset.v); r._open = true; break; }
       case "mask": r.mask = +b.dataset.v; r._open = true; break;
@@ -398,7 +385,12 @@
     if (e.target.dataset.act === "unsure") { resp(ITEMS[state.idx].id).unsure = e.target.checked; save(); }
   });
   app.addEventListener("input", (e) => {
-    if (e.target.dataset.act === "note") { resp(ITEMS[state.idx].id).note = e.target.value; save(); }
+    if (e.target.dataset.act === "text") {
+      const it = ITEMS[state.idx], r = resp(it.id);
+      const before = answered(it);
+      r[e.target.dataset.p].text = e.target.value; save();
+      if (answered(it) !== before) { const nb = app.querySelector('[data-act="next"]'); if (nb) nb.disabled = !answered(it); }
+    }
   });
   app.addEventListener("toggle", (e) => {
     if (e.target.dataset && e.target.dataset.act === "toggle-more" && state.view === "q") { resp(ITEMS[state.idx].id)._open = e.target.open; save(); }
