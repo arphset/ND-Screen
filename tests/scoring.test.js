@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -328,6 +328,22 @@ for (let k = 0; k < 300; k++) {
   for (const f of Object.keys(ND.LIFE_SPHERES)) R3[f] = { now: { D: 3 }, child: { D: 3 } };
   const E3 = ev(R3);
   check("нет признаков, но всё сильно мешает → индексы 0", E3.asd.index === 0 && E3.adhd.index === 0, [E3.asd.index, E3.adhd.index]);
+}
+
+// ── «Что может помочь» ──
+{
+  const all = [...ND.SUPPORT.flatMap((g) => g.items), ...ND.SUPPORT_BASE];
+  check("у каждого совета есть уровень доказательности и источник", all.every((x) => x.ev.length && x.ev.every((k) => ND.EVIDENCE[k]) && x.src.length > 5 && x.how.length > 40));
+  check("у каждого недоказанного метода есть источник", ND.SUPPORT_UNPROVEN.every((x) => x.src && x.note));
+  const zero = {};
+  for (const it of ITEMS) zero[it.id] = it.kind === "func" ? { now: { D: 0 }, child: { D: 0 } } : { now: { I: 0 }, child: { I: 0 } };
+  const SPz = ND.support(ev(zero), zero);
+  check("без признаков блок «Что может помочь» пуст", !SPz.groups.length && !SPz.base.length, SPz.groups.map((g) => g.key));
+  const Rs = ND.sampleResponses(), before = JSON.stringify(ev(Rs).asd) + JSON.stringify(ev(Rs).adhd);
+  const SPs = ND.support(ev(Rs), Rs);
+  check("на примере отчёта подбираются советы", SPs.groups.length >= 2 && SPs.base.length === 2, SPs.groups.map((g) => g.key));
+  check("подбор советов не меняет результат", JSON.stringify(ev(Rs).asd) + JSON.stringify(ev(Rs).adhd) === before);
+  for (let k = 0; k < 50; k++) { const R = profile(() => Math.floor(rnd() * 5)); try { ND.support(ev(R), R); } catch (e) { check("подбор советов без ошибок", false, e.message); break; } }
 }
 
 // ── Пояснения к вопросам ──

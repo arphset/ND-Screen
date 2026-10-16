@@ -227,7 +227,11 @@
           ])}
         </div>
 
+        ${radarBlock(E)}
+
         ${consistencyBlock(E.validity)}
+
+        ${supportBlock(ND.support(E, state.R))}
 
         ${strengthsBlock(E.strengths)}
 
@@ -273,6 +277,56 @@
         ${confirmReset ? `<div class="confirm no-print"><span>Удалить все ответы из этого браузера? Это нельзя отменить.</span><div class="row"><button class="btn primary" data-act="reset-yes">Удалить ответы</button><button class="btn" data-act="reset-no">Отмена</button></div></div>` : ""}
         <div id="export-box"></div>
       </div>`;
+  }
+
+  // Профиль-радар: 7 критериев РАС и две группы симптомов СДВГ, сейчас и в детстве
+  function radarBlock(E) {
+    const C = E.constructs, S = E.symptoms;
+    const grp = (pre, p) => { const xs = Object.keys(ND.ADHD_SYMPTOMS).filter((s) => s.startsWith(pre)).map((s) => S[s][p]); return xs.some((x) => x.status !== ST.NODATA) ? xs.reduce((a, x) => a + x.s, 0) / xs.length : null; };
+    const axes = [
+      ...["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => ({ code: ND.CONSTRUCTS[cid].dsm, label: ND.CONSTRUCTS[cid].label, g: "РАС",
+        now: C[cid].now.n ? C[cid].now.s : null, child: C[cid].child.n ? C[cid].child.s : null })),
+      { code: "A1", label: "Невнимательность", g: "СДВГ", now: grp("A1", "now"), child: grp("A1", "child") },
+      { code: "A2", label: "Гиперактивность и импульсивность", g: "СДВГ", now: grp("A2", "now"), child: grp("A2", "child") },
+    ];
+    if (axes.every((a) => a.now == null)) return "";
+    const W = 520, H = 440, cx = W / 2, cy = H / 2 + 4, Rr = 150, n = axes.length;
+    const ang = (i) => -Math.PI / 2 + (2 * Math.PI * i) / n;
+    const pt = (i, v) => [cx + Rr * v * Math.cos(ang(i)), cy + Rr * v * Math.sin(ang(i))];
+    const poly = (k) => axes.map((a, i) => pt(i, a[k] || 0).map((x) => x.toFixed(1)).join(",")).join(" ");
+    const ring = (v, cls) => `<polygon class="${cls}" points="${axes.map((_, i) => pt(i, v).map((x) => x.toFixed(1)).join(",")).join(" ")}"/>`;
+    const spokes = axes.map((_, i) => { const [x, y] = pt(i, 1); return `<line class="spoke" x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`; }).join("");
+    const labels = axes.map((a, i) => {
+      const [x, y] = pt(i, 1.16), c = Math.cos(ang(i));
+      const anchor = Math.abs(c) < 0.2 ? "middle" : c > 0 ? "start" : "end";
+      return `<text class="lbl" x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${anchor}" dominant-baseline="middle"><tspan class="lbl-g">${a.g} ${a.code}</tspan><tspan x="${x.toFixed(1)}" dy="1.25em">${pct(a.now || 0)}${a.child != null ? ` · ${pct(a.child)}` : ""}</tspan></text>`;
+    }).join("");
+    const hasChild = axes.some((a) => a.child != null);
+    const rows = axes.map((a) => `<li><b class="mono">${a.g} ${a.code}</b> ${esc(a.label)}: сейчас ${a.now == null ? "—" : pct(a.now)}, в детстве ${a.child == null ? "—" : pct(a.child)}</li>`).join("");
+    return `<section class="block"><h2>Профиль</h2>
+      <div class="legend"><span><i class="sw"></i>сейчас</span>${hasChild ? `<span><i class="sw child"></i>в детстве</span>` : ""}<span>кольца: пороги 40 («вероятно») и 60 («выполнен»)</span></div>
+      <div class="radar"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Профиль признаков: выраженность критериев РАС и групп симптомов СДВГ сейчас и в детстве">
+        ${ring(1, "r-out")}${ring(ND.PARAMS.thetaHi, "r-hi")}${ring(ND.PARAMS.thetaLo, "r-lo")}${spokes}
+        ${hasChild ? `<polygon class="p-child" points="${poly("child")}"/>` : ""}
+        <polygon class="p-now" points="${poly("now")}"/>
+        ${axes.map((a, i) => { const [x, y] = pt(i, a.now || 0); return `<circle class="d-now" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`; }).join("")}
+        ${labels}
+      </svg></div>
+      <details class="small muted"><summary>Значения по осям</summary><ul class="stack">${rows}</ul></details>
+      <p class="small muted">Каждая ось — выраженность от 0 до 100: для РАС по критерию DSM-5-TR, для СДВГ средняя по 9 симптомам группы. Подписи у осей: сейчас · в детстве. Картинка показывает форму профиля и что изменилось с детства. Решение о критериях принимается по таблицам ниже.</p></section>`;
+  }
+
+  // «Что может помочь»: проверенные методики по выраженным признакам (src/support.js)
+  function supportBlock(SP) {
+    if (!SP.groups.length && !SP.base.length) return "";
+    const tag = (k) => `<span class="evtag evtag-${k}">${esc(ND.EVIDENCE[k])}</span>`;
+    const item = (x) => `<li><div class="row" style="gap:6px;align-items:baseline"><b>${esc(x.t)}</b>${x.ev.map(tag).join("")}</div><span>${esc(x.how)}</span><span class="small muted">Источник: ${esc(x.src)}</span></li>`;
+    return `<section class="block"><h2>Что может помочь</h2>
+      <p class="muted">Методики и приспособления, подобранные по выраженным у вас признакам. У каждого указано, насколько он проверен, и источник. Это не лечение и не замена специалисту: лекарства и терапию подбирает врач после диагностики.</p>
+      ${SP.groups.map((g) => `<div class="support"><h3>${esc(g.label)}</h3><p class="small muted">${esc(g.why)}</p><ul class="sup">${g.items.map(item).join("")}</ul></div>`).join("")}
+      ${SP.base.length ? `<div class="support"><h3>В любом случае</h3><ul class="sup">${SP.base.map(item).join("")}</ul></div>` : ""}
+      ${SP.unproven.length ? `<details class="support"><summary><b>Часто советуют, но польза не доказана</b></summary><ul class="sup">${SP.unproven.map((x) => `<li><b>${esc(x.t)}</b><span>${esc(x.note)}.</span><span class="small muted">Источник: ${esc(x.src)}</span></li>`).join("")}</ul></details>` : ""}
+    </section>`;
   }
 
   function strengthsBlock(list) {
