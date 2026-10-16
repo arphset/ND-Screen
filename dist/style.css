@@ -110,6 +110,7 @@ textarea { width: 100%; min-height: 70px; font: inherit; font-size: 0.9rem; bord
 .verdict { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 18px; display: grid; gap: 10px; align-content: start; }
 .pill { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 0.8rem; font-weight: 600; border: 1px solid var(--accent); }
 .pill.high { background: var(--accent); color: var(--accent-ink); }
+.pill.unreliable { background: var(--warn-soft); color: var(--ink); border-color: var(--warn); }
 .pill.partial { background: var(--accent-soft); color: var(--ink); }
 .pill.subclinical { background: transparent; color: var(--accent); border-style: dashed; }
 .pill.none { background: transparent; color: var(--muted); border-color: var(--line); }

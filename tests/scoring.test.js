@@ -47,7 +47,7 @@ const uniform = (l) => () => l;
 
 // ── 3. Границы значений на случайных профилях ──
 const okSt = new Set(Object.values(ND.ST));
-const okLevel = new Set(["high", "partial", "subclinical", "none"]);
+const okLevel = new Set(["high", "unreliable", "partial", "subclinical", "none"]);
 for (let k = 0; k < 400; k++) {
   const base = Math.floor(rnd() * 5);
   const E = ev(profile(() => Math.max(0, Math.min(4, base + pick([-1, 0, 1])))));
@@ -269,6 +269,28 @@ for (let k = 0; k < 300; k++) {
   check("начало в детстве: индекс не ограничен, тип указан", E2.adhd.index === E2.adhd.indexRaw && E2.adhd.presentation === "преимущественно невнимательная", [E2.adhd.index, E2.adhd.presentation]);
 }
 
+// ── Реальные ответы участников (v0.4.5) ──
+{
+  check("диапазоны индекса совпадают с порогами", ND.indexBand(39) === "низкий" && ND.indexBand(40) === "умеренный" && ND.indexBand(59) === "умеренный" && ND.indexBand(60) === "выраженный" && ND.indexBand(80) === "высокий");
+  // все критерии выполнены, но противоречивые пары → «под вопросом», а не «частичное»
+  const R = {};
+  for (const it of ITEMS) {
+    if (it.s) R[it.id] = { now: { I: 4, F: "always" }, child: { I: 4, F: "always" }, ctx: ["work", "home"], harm: 2 };
+    else if (it.kind === "func") R[it.id] = { now: { D: 3 }, child: { D: 3 } };
+    else if (!it.rev) R[it.id] = { now: { I: 0 }, child: { I: 0 } };
+  }
+  for (const it of ITEMS.filter((x) => x.rev && ITEMS.find((y) => y.id === x.pair).s)) R[it.id] = { now: { I: 4 }, child: { I: 4 } };
+  const E = ev(R);
+  check("все критерии СДВГ + противоречия → «под вопросом»", E.adhd.level === "unreliable", [E.adhd.level, E.validity.map((f) => f.code + f.severity)]);
+  check("«под вопросом» в общем выводе считается признаком", ND.scoring.overall(E).code === "adhd", ND.scoring.overall(E).code);
+  // «совсем нет» + отмеченные места — не противоречие
+  const R2 = {};
+  for (const it of ITEMS.filter((x) => !x.rev && !x.kind && !x.fu)) R2[it.id] = { now: { I: 0 }, child: { I: 0 }, ctx: ["home", "work"], harm: 0 };
+  check("«совсем нет» с отмеченными местами не даёт флаг противоречия", !ev(R2).validity.some((f) => f.code === "inner"), ev(R2).validity);
+  // разброс внутри темы — только мягкий
+  check("разброс внутри темы никогда не снимает уровень", ITEMS.length && !ev(R).validity.some((f) => f.code === "spread" && f.severity === "hard"));
+}
+
 // ── Пояснения к вопросам ──
 for (const it of ITEMS) {
   const h = ND.HINTS[it.id];
@@ -308,7 +330,7 @@ check("нет пояснений к несуществующим вопроса�
     D_LABELS: ["Не мешали", "Немного", "Заметно", "Сильно"],
     CTX: [["home", "Дома"], ["work", "Работа или учёба"], ["friends", "С друзьями"], ["strangers", "С незнакомыми"], ["alone", "Наедине с собой"]],
     ST_LABEL: { met: "выполнен", probable: "вероятно", no: "нет", nodata: "нет данных" },
-    LEVEL: { high: ["Высокое соответствие"], partial: ["Частичное соответствие"], subclinical: ["Отдельные черты"], none: ["Не соответствует"] },
+    LEVEL: { high: ["Высокое соответствие"], unreliable: ["Соответствие под вопросом"], partial: ["Частичное соответствие"], subclinical: ["Отдельные черты"], none: ["Не соответствует"] },
   };
   let errs = 0, bad = 0;
   const profiles = [{}, ND.sampleResponses()];

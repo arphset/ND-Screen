@@ -147,7 +147,9 @@ ND.scoring = (function () {
         text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом: ` +
           badPairs.slice(0, 3).map(([x, y]) => `«${short(x)}» и «${short(y)}»`).join("; ") + (badPairs.length > 3 ? ` и ещё ${badPairs.length - 3}` : "") + "." });
 
-    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно», «полностью скрываю» или указаны места
+    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно» или «полностью скрываю».
+    // Отмеченные места при «совсем нет» не считаются противоречием: люди часто отмечают, где бывает сама ситуация,
+    // а в подсчёт места при таком ответе и так не попадают.
     const inner = [];
     for (const it of ND.ITEMS.filter((x) => !x.rev && !x.kind && ND.eligible(x, R))) {
       const r = ans(it.id);
@@ -155,22 +157,23 @@ ND.scoring = (function () {
       const why = [];
       if (r.harm >= 2) why.push("мешает");
       if (r.mask === 2) why.push("скрываю");
-      if (r.ctx && r.ctx.length) why.push("указано, где проявляется");
       if (why.length) inner.push({ id: it.id, why });
     }
     if (inner.length)
       flags.push({ code: "inner", severity: inner.length >= 5 ? "hard" : "soft", items: inner.map((x) => x.id),
-        text: `В ${inner.length} ответах выбрано «совсем нет», но при этом отмечено, что признак мешает, скрывается или где-то проявляется` +
+        text: `В ${inner.length} ответах выбрано «совсем нет», но при этом отмечено, что признак мешает или скрывается с усилием` +
           (inner.length <= 3 ? `: ${inner.map((x) => `«${short(x.id)}»`).join("; ")}` : "") + "." });
 
-    // 3. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы
+    // 3. Разброс внутри темы: похожие вопросы одной темы получили очень разные ответы.
+    // Это не противоречие: вопросы одной темы описывают разные проявления, и у живых людей часть из них бывает, а часть нет.
+    // Поэтому флаг только мягкий и уровень не снимает.
     const spread = [];
     for (const cid of Object.keys(ND.CONSTRUCTS)) {
       const k = constructScore(cid, R, "now");
       if (k.n >= 4 && k.sd > 0.33) spread.push(ND.CONSTRUCTS[cid].label);
     }
     if (spread.length)
-      flags.push({ code: "spread", severity: spread.length >= 3 ? "hard" : "soft",
+      flags.push({ code: "spread", severity: "soft",
         text: `Сильный разброс ответов внутри темы: ${spread.join(", ")}. Похожие вопросы получили очень разные ответы.` });
 
     // 4. Однообразие, скорость, «неприменимо»
@@ -322,7 +325,8 @@ ND.scoring = (function () {
     const adhd = Math.round((100 * parts.reduce((x, [w, v]) => x + w * v, 0)) / parts.reduce((x, [w]) => x + w, 0));
     return { asd, adhd };
   }
-  ND.indexBand = (x) => (x >= 70 ? "высокий" : x >= 50 ? "выраженный" : x >= 30 ? "умеренный" : "низкий");
+  // Диапазоны индекса совпадают с порогами критериев: 40 — «вероятно», 60 — «выполнен».
+  ND.indexBand = (x) => (x >= 80 ? "высокий" : x >= 60 ? "выраженный" : x >= 40 ? "умеренный" : "низкий");
 
   // L3b + L4
   function evaluate(R) {
@@ -386,7 +390,7 @@ ND.scoring = (function () {
     // ── L4 ──
     const validOk = !valid.some((f) => f.severity === "hard");
     function level(core, others, anyTrait) {
-      if (core === ST.MET && others.every((x) => x === ST.MET) && validOk) return "high";
+      if (core === ST.MET && others.every((x) => x === ST.MET)) return validOk ? "high" : "unreliable";
       if (atLeastProb(core) && others.every(atLeastProb)) return "partial";
       if (anyTrait) return "subclinical";
       return "none";
@@ -412,7 +416,7 @@ ND.scoring = (function () {
   // L4c: общий вывод по двум направлениям
   // strong — высокое или частичное соответствие; trait — отдельные черты; none — не соответствует
   function overall(E) {
-    const cls = (lv) => (lv === "high" || lv === "partial" ? "strong" : lv === "subclinical" ? "trait" : "none");
+    const cls = (lv) => (lv === "high" || lv === "unreliable" || lv === "partial" ? "strong" : lv === "subclinical" ? "trait" : "none");
     const a = cls(E.asd.level), h = cls(E.adhd.level);
     const flags = E.differential.length > 0;
     let code, title, text;
