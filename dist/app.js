@@ -650,7 +650,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         return;
       }
       case "export": {
-        const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R) }, null, 2);
+        const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R),
+          comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })) }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));

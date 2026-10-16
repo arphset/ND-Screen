@@ -86,7 +86,7 @@ ND.clinician = (function () {
   function scaleLine(x, short) {
     const head = short ? "" : `${x.name}: `;
     if (x.mean) return head + `средний балл ${String(x.score).replace(".", ",")} из 7 (выше — тяжелее, порогов нет)`;
-    return head + (short ? `${x.score}/${x.max}` : `${x.score} из ${x.max}`) + `, ${x.band} степень`;
+    return head + (short ? `${x.score}/${x.max}` : `${x.score} из ${x.max}`) + (x.d === "alexithymia" ? `, ${x.band} алекситимия` : `, ${x.band} степень`);
   }
 
   function build(R) {
@@ -143,8 +143,9 @@ ND.clinician = (function () {
     T.push("РАС: КРИТЕРИИ DSM-5-TR", `Ядро: ${ST[asd.core]}; B выполнено ${asd.bMet}, вероятно ещё ${asd.bProb - asd.bMet}.`);
     for (const cid of [...ASD_A, ...ASD_B]) {
       const k = C[cid], d = ND.CONSTRUCTS[cid], ev = evList(ND.ITEMS.filter((it) => it.c === cid));
-      h.push(crit(d.dsm, d.label, stNow(k), stChild(k), ev.html));
-      T.push(`  ${d.dsm} ${d.label}: ${stNow(k)}, ${stChild(k)}`, ...ev.text);
+      const note = ND.explain ? (ND.explain.construct(cid, E, R).find((w) => w.period === "note") || {}).text : "";
+      h.push(crit(d.dsm, d.label, stNow(k), stChild(k), ev.html + (note ? `<p class="small"><b>Учесть:</b> ${esc(note)}</p>` : "")));
+      T.push(`  ${d.dsm} ${d.label}: ${stNow(k)}, ${stChild(k)}`, ...ev.text, ...(note ? [`    Учесть: ${note}`] : []));
     }
     const asdLines = [
       ["C", "Признаки с раннего развития", `${ST[asd.C]}: в детстве от «вероятно» ${asd.childHits} из 7 критериев`],
@@ -195,6 +196,24 @@ ND.clinician = (function () {
     h.push(`<section class="block"><h2>Пересчёт в шкалы оригинальных тестов</h2><ul class="stack small">${scales.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
       <p class="small muted">Оценки по собственным формулировкам вопросов, сведённым к структуре оригиналов; нормы оригиналов применимы приблизительно.</p></section>`);
     T.push("ПЕРЕСЧЁТ В ШКАЛЫ (оценка)", ...scales.map((x) => "  " + x), "");
+
+    // Дополнительные шкалы (не входят в РАС и СДВГ) и сопутствующие состояния
+    const f1 = (v) => String(v).replace(".", ",");
+    const extra = [];
+    const P = E.scales.PAQ, A = E.scales.ABSI;
+    if (P && P.score != null) extra.push([`PAQ (алекситимия, Preece 2018; рус. Ларионов 2023): ${P.score}/168, ${P.band}`,
+      Object.values(P.subs).map((x) => `${x.label}: ${x.score == null ? "—" : `${x.score}/${x.max}, ${x.band}`}`)]);
+    if (A && A.gate === 1) extra.push(["ABSI (аутистическое выгорание): со слов, выгорания не было", []]);
+    else if (A && A.score != null) extra.push([`ABSI (аутистическое выгорание, Arnold 2023, неофициальный перевод): среднее ${f1(A.score)} из 7, выше — тяжелее; порогов нет`,
+      Object.values(A.subs).map((x) => `${x.label}: ${x.score == null ? "—" : f1(x.score)}`)]);
+    if (extra.length || co.length) {
+      h.push(`<section class="block"><h2>Дополнительные шкалы и сопутствующие состояния</h2>
+        ${extra.map(([t, l]) => `<p><b>${esc(t)}</b></p>${l.length ? `<ul class="small stack">${l.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`).join("")}
+        ${co.length ? `<p><b>Сопутствующие состояния (со слов): ${co.length}</b></p><ul class="small stack">${co.map((it) => `<li>${esc(it.t)}<br><span class="muted">${it.co.map((c) => esc(`${c.g}: ${c.t}`)).join(" ")}</span></li>`).join("")}</ul>` : ""}
+        <p class="small muted">На критерии и индексы РАС и СДВГ не влияют. Высокая алекситимия может частично объяснять трудности в A1–A2; выгорание по ABSI не отделяется от депрессии, смотреть вместе с PHQ-9.</p></section>`);
+      T.push("ДОПОЛНИТЕЛЬНЫЕ ШКАЛЫ И СОПУТСТВУЮЩИЕ СОСТОЯНИЯ", ...extra.flatMap(([t, l]) => ["  " + t, ...l.map((x) => "    – " + x)]),
+        ...(co.length ? ["  Сопутствующие состояния (со слов):", ...co.map((it) => "    – " + it.t)] : []), "");
+    }
 
     // Согласованность
     const V = E.validity;
