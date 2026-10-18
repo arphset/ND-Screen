@@ -419,6 +419,14 @@ for (let k = 0; k < 300; k++) {
   check("ответы о сопутствующих состояниях ничего не меняют, даже быстрые", same === tot, `${same}/${tot}`);
 }
 
+// ── Тип СДВГ в общем выводе ──
+{
+  const E = ev(ND.sampleResponses()), O = ND.scoring.overall(E);
+  const strong = ["high", "unreliable", "partial"].includes(E.adhd.level);
+  check("тип СДВГ показан в общем выводе, только если признаки СДВГ выражены", strong ? /^Тип СДВГ/.test(O.adhdType || "") : O.adhdType == null, O.adhdType);
+  check("при нейротипичном профиле типа нет", ND.scoring.overall(ev({})).adhdType == null);
+}
+
 // ── «Почему такой результат» ──
 {
   let bad = 0;

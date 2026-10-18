@@ -110,7 +110,7 @@ ND.clinician = (function () {
     const L = (lv) => U.LEVEL[lv][0];
     const consist = !E.validity.length ? "противоречий не найдено" : hard ? "противоречивые ответы, результат ненадёжен" : "отдельные противоречия";
     h.push(`<section class="block"><h2>Сводка</h2><div class="tbl-wrap"><table><tbody>
-      <tr><td>Общий вывод</td><td><b>${esc(O.title)}</b></td></tr>
+      <tr><td>Общий вывод</td><td><b>${esc(O.title)}</b>${O.adhdType ? `<br>${esc(O.adhdType)}` : ""}</td></tr>
       <tr><td>РАС</td><td>${L(asd.level)}, индекс ${asd.index}/100${asd.indexRaw > asd.index ? ` (ограничен; без ограничения ${asd.indexRaw})` : ""}</td></tr>
       <tr><td>СДВГ</td><td>${L(adhd.level)}, индекс ${adhd.index}/100${adhd.indexRaw > adhd.index ? ` (ограничен; без ограничения ${adhd.indexRaw})` : ""}${adhd.presentation ? `, ${adhd.presentation}` : ""}</td></tr>
       <tr><td>Согласованность</td><td>${consist} (проверено пар: ${E.validity.pairsChecked || 0})</td></tr>
@@ -120,7 +120,7 @@ ND.clinician = (function () {
       ${co.length ? `<tr><td>Сопутствующие состояния (со слов)</td><td>${co.map((it) => esc(it.t.replace(/\.$/, ""))).join("; ")}</td></tr>` : ""}
       <tr><td>Дифференциальные флаги</td><td>${E.differential.length ? E.differential.map((d) => esc(d.label) + (d.lateOnset ? " (начало не в детстве)" : "")).join("; ") : "нет"}</td></tr>
     </tbody></table></div></section>`);
-    T.push("СВОДКА", `Общий вывод: ${O.title}`, `РАС: ${L(asd.level)}, индекс ${asd.index}/100`,
+    T.push("СВОДКА", `Общий вывод: ${O.title}${O.adhdType ? ". " + O.adhdType : ""}`, `РАС: ${L(asd.level)}, индекс ${asd.index}/100`,
       `СДВГ: ${L(adhd.level)}, индекс ${adhd.index}/100${adhd.presentation ? ", " + adhd.presentation : ""}`,
       `Согласованность: ${consist}`, `Камуфляж: ${pct(C.CAMO.now.s)}/100`,
       ...sc.map((x) => `${x.name}: ${x.score == null ? `неполные ответы (${x.answered} из ${x.n})` : scaleLine(x, true)}`),
