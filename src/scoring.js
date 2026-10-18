@@ -44,6 +44,7 @@ ND.scoring = (function () {
   // L1: балл пункта за период → {s, lo, hi} или null (нет данных)
   function itemScore(item, r, period) {
     if (!r || r.na) return null;
+    if (period === "child" && item.noChild) return null;
     const p = r[period];
     if (!p || p.unknown || p.I == null) return null;
     const In = p.I / 4;

@@ -22,6 +22,8 @@
   const embedded = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
 
   let state = load() || fresh();
+  // у вопросов без детства старые сохранённые ответы о детстве не нужны
+  for (const id of ND.NO_CHILD) if (state.R[id]) delete state.R[id].child;
   let shownAt = Date.now();
   let confirmReset = false;
 
@@ -31,7 +33,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   const ITEMS = ND.ITEMS;
-  const resp = (id) => (state.R[id] = state.R[id] || { now: {}, child: {} });
+  const resp = (id) => (state.R[id] = state.R[id] || (ND.NO_CHILD.has(id) ? { now: {} } : { now: {}, child: {} }));
   const isSimple = (it) => it.rev || it.kind === "diff" || it.kind === "strength";
   const open = (it) => ND.eligible(it, state.R);
   const openItems = () => ITEMS.filter(open);
@@ -44,7 +46,7 @@
     const f = it.kind === "func" ? "D" : "I";
     const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
     if (it.kind === "scale" || it.kind === "comorb") return !!(r.now && r.now.I != null);
-    return ok(r.now) && ok(r.child);
+    return ok(r.now) && (it.noChild || ok(r.child));
   }
 
   // ───────── render ─────────
@@ -182,7 +184,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
           ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
           ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : periodBlock(it, r, "now") + periodBlock(it, r, "child") + extrasBlock(it, r))}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : periodBlock(it, r, "now") + (it.noChild ? "" : periodBlock(it, r, "child")) + extrasBlock(it, r))}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">

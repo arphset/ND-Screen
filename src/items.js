@@ -444,8 +444,13 @@ ND.DIFF_NOTES = {
 ND.NO_MASK = new Set([
   ...ND.ITEMS.filter((it) => it.c === "CAMO").map((it) => it.id),
   "B4-5", "B4-11", "IM-1", "IM-2", "IM-4", "IM-6", "IM-7", "DT-1", "DT-2", "DT-3", "DT-5", "DT-6", "B3-5", "B3-8", "B2-8", "H1-i2", "EX-3",
+  // «Мне говорят…», «Меня считают…»: раз другие это замечают, оно по определению видно со стороны (v0.9.1)
+  "A1-11", "A1-14", "A2-3", "A2-6", "A3-5", "B3-3", "MO-1", "MO-3", "H1-c2", "H2-e", "H2-f2",
 ]);
 for (const it of ND.ITEMS) if (ND.NO_MASK.has(it.id)) it.noMask = true;
+// Взрослые ситуации, которых до 12 лет обычно не бывает: детство у них не спрашивается и не учитывается (v0.9.1)
+ND.NO_CHILD = new Set(["A3-7", "EX-4", "BO-1", "BO-2"]);
+for (const it of ND.ITEMS) if (ND.NO_CHILD.has(it.id)) it.noChild = true;
 
 ND.groupOf = (it) => it.g || it.c || it.s;
 // Уточняющий пункт открывается, если хоть один основной пункт его группы отвечен на «частично» или выше.
@@ -456,6 +461,6 @@ ND.eligible = function (it, R) {
   const g = ND.groupOf(it);
   return ND.ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === g && (() => {
     const r = R[x.id];
-    return r && !r.na && ((r.now && r.now.I >= 2) || (r.child && r.child.I >= 2));
+    return r && !r.na && ((r.now && r.now.I >= 2) || (!x.noChild && r.child && r.child.I >= 2));
   })());
 };

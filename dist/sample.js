@@ -53,9 +53,10 @@ ND.sampleResponses = function () {
     const b = JSON.parse(JSON.stringify(R[base.id]));
     const d = k % 3 === 0 ? 1 : 0;
     b.now.I = Math.max(0, b.now.I - d);
-    if (b.child.I != null) b.child.I = Math.max(0, b.child.I - (k % 2));
+    if (b.child && b.child.I != null) b.child.I = Math.max(0, b.child.I - (k % 2));
     delete b.note;
     R[it.id] = b;
   });
+  for (const id of ND.NO_CHILD) if (R[id]) delete R[id].child;
   return R;
 };

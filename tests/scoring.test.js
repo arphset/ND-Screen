@@ -353,7 +353,12 @@ for (let k = 0; k < 300; k++) {
 
 // ── Поле «Видно ли это со стороны?» убрано у 37 вопросов ──
 {
-  check("поле маскировки убрано у 37 вопросов", ND.NO_MASK.size === 37 && [...ND.NO_MASK].every((id) => ITEMS.some((x) => x.id === id && x.noMask)), ND.NO_MASK.size);
+  {
+    const it = ITEMS.find((x) => x.id === "A3-7");
+    check("у вопросов без детства ответ о детстве не учитывается", it.noChild && ND.scoring.itemScore(it, { now: { I: 3 }, child: { I: 4, F: "always" } }, "child") === null);
+    check("вопросов без детства 4, все существуют", ND.NO_CHILD.size === 4 && [...ND.NO_CHILD].every((id) => ITEMS.some((x) => x.id === id)));
+  }
+  check("поле маскировки убрано у 48 вопросов (37 + 11 «мне говорят»)", ND.NO_MASK.size === 48 && [...ND.NO_MASK].every((id) => ITEMS.some((x) => x.id === id && x.noMask)), ND.NO_MASK.size);
   const it = ITEMS.find((x) => x.id === "B4-5"), r = { now: { I: 2, F: "some" }, child: { I: 2 }, mask: 2 };
   check("старый ответ «скрываю» у такого вопроса не даёт поправки", ND.scoring.itemScore(it, r, "now").s === ND.scoring.itemScore(it, { ...r, mask: 0 }, "now").s);
 }

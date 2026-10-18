@@ -19,7 +19,7 @@ ND.clinician = (function () {
       if (x.I == null) return x.custom ? "только свой ответ" : "нет ответа";
       return U.I_LABELS[x.I].toLowerCase() + (x.F ? ", " + F[x.F].toLowerCase() : "");
     };
-    const parts = [`сейчас: ${per("now")}`, `детство: ${per("child")}`];
+    const parts = [`сейчас: ${per("now")}`, ...(r.child ? [`детство: ${per("child")}`] : [])];
     // где, мешает и видно ли учитываются только при «частично» и выше (старые сохранённые ответы могут их содержать)
     if (r.now && r.now.I >= 2) {
       if (r.mask === 1) parts.push("частично сдерживает");
