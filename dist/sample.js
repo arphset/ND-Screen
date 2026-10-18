@@ -58,5 +58,6 @@ ND.sampleResponses = function () {
     R[it.id] = b;
   });
   for (const id of ND.NO_CHILD) if (R[id]) delete R[id].child;
+  for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (R[id] && R[id][p]) delete R[id][p].F;
   return R;
 };

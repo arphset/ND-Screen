@@ -451,6 +451,9 @@ for (const it of ND.ITEMS) if (ND.NO_MASK.has(it.id)) it.noMask = true;
 // Взрослые ситуации, которых до 12 лет обычно не бывает: детство у них не спрашивается и не учитывается (v0.9.1)
 ND.NO_CHILD = new Set(["A3-7", "EX-4", "BO-1", "BO-2"]);
 for (const it of ND.ITEMS) if (ND.NO_CHILD.has(it.id)) it.noChild = true;
+// Устойчивые черты и предпочтения: «как часто» к ним не подходит, балл считается только по уровню (v0.9.2)
+ND.NO_FREQ = new Set(["A2-8", "A3-8", "A3-11", "A3-12", "IM-3", "IM-4", "IM-7", "DT-2", "B3-3", "B3-5", "B3-8", "MO-1", "MO-3", "CM-14"]);
+for (const it of ND.ITEMS) if (ND.NO_FREQ.has(it.id)) it.noFreq = true;
 
 ND.groupOf = (it) => it.g || it.c || it.s;
 // Уточняющий пункт открывается, если хоть один основной пункт его группы отвечен на «частично» или выше.

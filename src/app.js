@@ -24,6 +24,8 @@
   let state = load() || fresh();
   // у вопросов без детства старые сохранённые ответы о детстве не нужны
   for (const id of ND.NO_CHILD) if (state.R[id]) delete state.R[id].child;
+  // и частота у устойчивых черт: она больше не спрашивается и не учитывается
+  for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (state.R[id] && state.R[id][p]) delete state.R[id][p].F;
   let shownAt = Date.now();
   let confirmReset = false;
 
@@ -135,7 +137,7 @@
       <button class="chip" data-act="unknown" data-p="${p}" aria-pressed="${!!pr.unknown}">Не помню</button></div>`;
     if (pr.custom) html += `<div class="sub"><label class="sub-label" for="text-${it.id}-${p}">Опишите своими словами. Если можете, отметьте и вариант выше: тогда ответ попадёт в подсчёт баллов.</label>
       <textarea id="text-${it.id}-${p}" data-act="text" data-p="${p}" placeholder="Например: в детстве только в школе, дома нет">${esc(pr.text || "")}</textarea></div>`;
-    if (!isFunc && !isSimple(it) && pr.I >= 2) {
+    if (!isFunc && !isSimple(it) && !it.noFreq && pr.I >= 2) {
       html += `<div class="sub"><span class="sub-label">Как часто это бывает${p === "child" ? " (было)" : ""}?</span><div class="chips">${F_OPTS.map(([k, l]) =>
         `<button class="chip" data-act="freq" data-p="${p}" data-v="${k}" aria-pressed="${pr.F === k}">${l}</button>`).join("")}</div></div>`;
     }
