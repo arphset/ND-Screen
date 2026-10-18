@@ -20,11 +20,16 @@ ND.clinician = (function () {
       return U.I_LABELS[x.I].toLowerCase() + (x.F ? ", " + F[x.F].toLowerCase() : "");
     };
     const parts = [`сейчас: ${per("now")}`, `детство: ${per("child")}`];
-    if (r.mask === 1) parts.push("частично сдерживает");
-    if (r.mask === 2) parts.push("скрывает с усилием");
-    if (r.harm >= 1) parts.push("мешает " + U.D_LABELS[r.harm].toLowerCase());
-    if (r.ctx && r.ctx.length) parts.push("где: " + r.ctx.map((c) => CTX_LABEL()[c].toLowerCase()).join(", "));
-    if (r.unsure) parts.push("не уверен(а)");
+    // где, мешает и видно ли учитываются только при «частично» и выше (старые сохранённые ответы могут их содержать)
+    if (r.now && r.now.I >= 2) {
+      if (r.mask === 1) parts.push("частично сдерживает");
+      if (r.mask === 2) parts.push("скрывает с усилием");
+      if (r.maskUnk) parts.push("видно ли со стороны: не знает");
+      if (r.harm >= 1) parts.push("мешает " + U.D_LABELS[r.harm].toLowerCase());
+      if (r.harmUnk) parts.push("мешает ли: не знает");
+      if (r.ctx && r.ctx.length) parts.push("где: " + r.ctx.map((c) => CTX_LABEL()[c].toLowerCase()).join(", "));
+      if (r.ctxUnk) parts.push("где: не знает");
+    }
     return parts.join(" · ");
   }
 
@@ -225,7 +230,6 @@ ND.clinician = (function () {
     const topics = [
       ["Скрывает с усилием (вероятная маскировка, уточнить у близких)", scored.filter((it) => R[it.id].mask === 2)],
       ["Выражено сейчас, но детство не вспомнил(а) (нужен рассказ родителя)", scored.filter((it) => R[it.id].child && R[it.id].child.unknown)],
-      ["Не уверен(а) в ответе", scored.filter((it) => R[it.id].unsure)],
       ["Выражено сейчас, в детстве не было (уточнить начало и возможные другие причины)", scored.filter((it) => R[it.id].child && R[it.id].child.I != null && R[it.id].child.I <= 0 && R[it.id].now.I >= 3)],
     ].filter(([, list]) => list.length);
     const own = ND.ITEMS.filter((it) => R[it.id]).map((it) => {

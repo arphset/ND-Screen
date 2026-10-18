@@ -42,7 +42,7 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
 function answer(it, lvl) {
   if (it.kind === "func") return { now: { D: Math.min(3, lvl) }, child: { D: Math.min(3, lvl) }, rt: 5000 };
   const p = () => { const I = Math.max(0, Math.min(4, lvl + pick([-1, 0, 0, 1]))); return I >= 2 ? { I, F: pick(FREQ) } : { I }; };
-  return { now: p(), child: rnd() < 0.1 ? { unknown: true } : p(), mask: pick([0, 0, 1, 2]), harm: pick([0, 1, 2, 3]), ctx: [pick(["home", "work", "friends"])], unsure: rnd() < 0.1, rt: 5000 };
+  return { now: p(), child: rnd() < 0.1 ? { unknown: true } : p(), mask: pick([0, 0, 1, 2]), harm: pick([0, 1, 2, 3]), ctx: [pick(["home", "work", "friends"])], rt: 5000 };
 }
 function profile(lvlFn) { const R = {}; for (const it of ITEMS) R[it.id] = answer(it, lvlFn(it)); return R; }
 const uniform = (l) => () => l;
@@ -96,7 +96,10 @@ for (let k = 0; k < 300; k++) {
   check("частота повышает балл", ND.scoring.itemScore(it, { ...base, now: { I: 3, F: "always" } }, "now").s > s0);
   check("маскировка повышает балл", ND.scoring.itemScore(it, { ...base, mask: 2 }, "now").s > s0);
   const u = ND.scoring.itemScore(it, { ...base, unsure: true }, "now");
-  check("«не уверен» расширяет интервал", u.lo < u.s && u.hi > u.s);
+  check("старая галочка «не уверен(а)» больше не влияет (v0.9)", u.s === s0 && u.lo === s0 && u.hi === s0, u);
+  const low = { now: { I: 1 }, child: { I: 1 } }, l0 = ND.scoring.itemScore(it, low, "now").s;
+  check("при «скорее нет» «видно ли со стороны» не учитывается", ND.scoring.itemScore(it, { ...low, mask: 2 }, "now").s === l0);
+  check("«не знаю» в поле «видно ли» = нет ответа", ND.scoring.itemScore(it, { ...base, maskUnk: true }, "now").s === s0);
   check("«не помню» исключает период", ND.scoring.itemScore(it, { ...base, child: { unknown: true } }, "child") === null);
   check("свой ответ без варианта не считается", ND.scoring.itemScore(it, { now: { custom: true, text: "иногда" }, child: {} }, "now") === null);
   check("«неприменимо» исключает вопрос", ND.scoring.itemScore(it, { ...base, na: true }, "now") === null);
@@ -211,25 +214,25 @@ for (let k = 0; k < 300; k++) {
 
   const R2 = consistent();
   ITEMS.filter((x) => !x.rev && !x.kind && !x.fu).slice(0, 5).forEach((it) => { R2[it.id].now = { I: 0 }; R2[it.id].harm = 3; });
-  check("5 ответов «совсем нет, но мешает сильно» → жёсткий флаг", ev(R2).validity.some((f) => f.code === "inner" && f.severity === "hard"), ev(R2).validity);
+  check("«совсем нет» с сохранённым «мешает сильно» больше не противоречие: поле скрыто", !ev(R2).validity.some((f) => f.code === "inner"), ev(R2).validity);
+  check("скрытые поля при «совсем нет» не меняют индексы", ev(R2).asd.index === ev((() => { const X = JSON.parse(JSON.stringify(R2)); for (const k in X) if (X[k].now && X[k].now.I === 0) delete X[k].harm; return X; })()).asd.index);
 
   const R3 = consistent();
   const one = ITEMS.find((x) => x.id === "A1-1"); R3[one.id].now = { I: 0 }; R3[one.id].harm = 3;
-  check("одна такая ошибка → только мягкое предупреждение", !ev(R3).validity.some((f) => f.code === "inner" && f.severity === "hard"));
+  check("одна такая отметка флага не даёт", !ev(R3).validity.some((f) => f.code === "inner"));
 }
 
 // ── Логика весов (v0.4.2) ──
 {
   const base = () => { const R = {}; for (const it of ITEMS) if (it.c === "ASD.A1") R[it.id] = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" } }; return R; };
   const st = (R) => ev(R).constructs["ASD.A1"].now.status;
-  check("без неуверенности A1 «выполнен»", st(base()) === "met", ev(base()).constructs["ASD.A1"].now);
+  check("A1 «выполнен»", st(base()) === "met", ev(base()).constructs["ASD.A1"].now);
   const U = base(); for (const k in U) U[k].unsure = true;
-  check("та же картина, но везде «не уверен(а)» → «вероятно»", st(U) === "probable", ev(U).constructs["ASD.A1"].now);
+  check("старая отметка «не уверен(а)» статус не меняет", st(U) === "met", ev(U).constructs["ASD.A1"].now);
   const W = {}; for (const it of ITEMS) if (it.c === "ASD.A1") W[it.id] = { now: { I: 2, F: "rare" }, child: { I: 0 } };
-  const W2 = JSON.parse(JSON.stringify(W)); for (const k in W2) W2[k].unsure = true;
-  check("слабый признак без неуверенности → «нет»", st(W) === "no", ev(W).constructs["ASD.A1"].now);
-  check("слабый признак с неуверенностью → «вероятно» (симметрично)", st(W2) === "probable", ev(W2).constructs["ASD.A1"].now);
-  check("неуверенность не меняет сам балл", ev(U).constructs["ASD.A1"].now.s === ev(base()).constructs["ASD.A1"].now.s);
+  check("слабый признак → «нет»", st(W) === "no", ev(W).constructs["ASD.A1"].now);
+  const K = base(); for (const k in K) { K[k].harmUnk = true; K[k].maskUnk = true; K[k].ctxUnk = true; }
+  check("«не знаю» в доп. полях не меняет баллы", ev(K).asd.index === ev(base()).asd.index && st(K) === "met");
 
   const it = ITEMS.find((x) => x.id === "A1-1");
   const r0 = { now: { I: 3, F: "often" }, child: { I: 3, F: "often" } }, r2 = { ...r0, mask: 2 };

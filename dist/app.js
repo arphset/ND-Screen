@@ -72,6 +72,7 @@
         <ul class="muted small">
           <li>От ${ITEMS.filter((x) => !x.fu).length} до ${ITEMS.length} вопросов: уточняющие появляются, только если признак у вас есть. Примерно 25–45 минут. Можно прерваться: ответы сохраняются в этом браузере и никуда не отправляются.</li>
           <li>Результат описывает, насколько ответы соответствуют критериям. Это материал для разговора со специалистом, а не диагноз: ADOS-2 и ADI-R проводятся только очно.</li>
+          <li>«Скорее нет» значит, что это в целом не про вас: бывает слабо или лишь изредка. «Частично» значит, что это есть заметно, но не во всём или не всегда. Вопросы о том, где это проявляется, мешает ли и видно ли со стороны, появляются, только если сейчас выбрано хотя бы «частично». В них есть вариант «не знаю».</li>
           <li>Под каждым вопросом есть пояснение с примерами. Если вопрос всё равно непонятен или не про вас, есть кнопка «Неприменимо».</li>
           <li>В конце будет отдельный отчёт для специалиста: по критериям DSM-5-TR, с вашими ответами под каждым критерием.</li>
         </ul>
@@ -119,12 +120,14 @@
       <span class="small muted">Эта анкета не может оценить риск и не заменяет помощь специалиста.</span></div>`;
   }
 
+  // Что значат средние варианты. «Скорее нет» по баллам остаётся ниже порога признака.
+  const I_KEY = `<div class="scale-key small muted"><span>«Скорее нет» — в целом не про вас: бывает слабо или лишь изредка</span><span>«Частично» — есть заметно, но не во всём или не всегда</span></div>`;
   function periodBlock(it, r, p) {
     const pr = r[p] || {};
     const isFunc = it.kind === "func";
     const val = isFunc ? pr.D : pr.I;
     let html = `<fieldset class="period"><legend>${PERIOD_LABEL[p]}</legend>`;
-    html += isFunc ? scaleBtns(p, val, D_LABELS, "D", "four") : scaleBtns(p, val, I_LABELS, "I");
+    html += isFunc ? scaleBtns(p, val, D_LABELS, "D", "four") : scaleBtns(p, val, I_LABELS, "I") + I_KEY;
     html += `<div class="chips">
       <button class="chip" data-act="custom" data-p="${p}" aria-pressed="${!!pr.custom}">Свой ответ</button>
       <button class="chip" data-act="unknown" data-p="${p}" aria-pressed="${!!pr.unknown}">Не помню</button></div>`;
@@ -137,19 +140,21 @@
     return html + "</fieldset>";
   }
 
-  // Дополнительные стороны ответа: показываются сразу, без раскрытия
+  // Дополнительные стороны ответа. Показываются, только если признак сейчас есть хотя бы «частично»:
+  // при «совсем нет» и «скорее нет» спрашивать, где он проявляется и мешает ли, бессмысленно, и в баллы эти поля тогда не идут.
+  const UNK = "Не знаю";
   function extrasBlock(it, r) {
-    const unsure = `<label class="check"><input type="checkbox" id="unsure-${it.id}" data-act="unsure" ${r.unsure ? "checked" : ""}> Не уверен(а) в ответе</label>${r.unsure ? `<span class="sub-label">Ответ будет учтён с запасом в обе стороны: по нему одному признак не засчитают ни как точно выполненный, ни как точно отсутствующий. В отчёте такие оценки показаны диапазоном.</span>` : ""}`;
-    if (it.kind === "func" || isSimple(it)) return unsure;
+    if (it.kind === "func" || isSimple(it)) return "";
+    if (!r.now || !(r.now.I >= 2)) return "";
     const ctx = r.ctx || [];
+    const unk = (f, on) => `<button class="chip" data-act="unk" data-v="${f}" aria-pressed="${!!on}">${UNK}</button>`;
     return `<div class="extras">
         <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
-          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}</div></div>
+          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}${unk("ctx", r.ctxUnk)}</div></div>
 ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли это со стороны? <span class="muted">Например, замечают ли другие, что вам трудно, или вы это прикрываете. Если к вопросу не подходит, пропустите.</span></span><div class="chips">${MASK.map((l, i) =>
-          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}</div></div>`}
+          `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}${unk("mask", r.maskUnk)}</div></div>`}
         <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
-          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}</div></div>
-        ${unsure}
+          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}${unk("harm", r.harmUnk)}</div></div>
       </div>`;
   }
 
@@ -208,7 +213,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const asdRows = ["ASD.A1", "ASD.A2", "ASD.A3", "ASD.B1", "ASD.B2", "ASD.B3", "ASD.B4"].map((cid) => {
       const k = C[cid], d = ND.CONSTRUCTS[cid];
       return `<tr><td><b class="mono">${d.dsm}</b> ${d.label}${whyRow(ND.explain.construct(cid, E, state.R))}</td><td>${meter(k.now.s, k.child.s)}</td>
-        <td>${stTag(k.now.status)} <span class="small muted mono">${k.now.hi > k.now.lo ? `${pct(k.now.lo)}–${pct(k.now.hi)}` : pct(k.now.s)}</span></td>
+        <td>${stTag(k.now.status)} <span class="small muted mono">${pct(k.now.s)}</span></td>
         <td>${stTag(k.child.status)} <span class="small muted mono">${pct(k.child.s)}</span></td></tr>`;
     }).join("");
     const symRows = Object.entries(ND.ADHD_SYMPTOMS).map(([sid, label]) => {
@@ -634,9 +639,11 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       case "unknown": { const p = b.dataset.p; r[p] = r[p].unknown ? {} : { unknown: true }; break; }
       case "custom": { const p = b.dataset.p; r[p].custom = !r[p].custom; r[p].unknown = false; break; }
       case "freq": r[b.dataset.p].F = b.dataset.v; break;
-      case "ctx": { const c = r.ctx || (r.ctx = []); const i = c.indexOf(b.dataset.v); i >= 0 ? c.splice(i, 1) : c.push(b.dataset.v); r._open = true; break; }
-      case "mask": r.mask = +b.dataset.v; r._open = true; break;
-      case "harm": r.harm = +b.dataset.v; r._open = true; break;
+      case "ctx": { const c = r.ctx || (r.ctx = []); const i = c.indexOf(b.dataset.v); i >= 0 ? c.splice(i, 1) : c.push(b.dataset.v); delete r.ctxUnk; r._open = true; break; }
+      case "mask": r.mask = +b.dataset.v; delete r.maskUnk; r._open = true; break;
+      case "harm": r.harm = +b.dataset.v; delete r.harmUnk; r._open = true; break;
+      // «Не знаю» в дополнительном поле: поле считается без ответа и в баллы не идёт
+      case "unk": { const f = b.dataset.v, k = f + "Unk"; r[k] = !r[k]; if (r[k]) delete r[f]; r._open = true; break; }
       case "na": r.na = !r.na; break;
       case "prev": go(nextOpen(state.idx, -1)); return;
       case "next": {
@@ -688,7 +695,6 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   }
 
   app.addEventListener("change", (e) => {
-    if (e.target.dataset.act === "unsure") { resp(ITEMS[state.idx].id).unsure = e.target.checked; save(); render(); }
   });
   app.addEventListener("input", (e) => {
     if (e.target.dataset.act === "text") {

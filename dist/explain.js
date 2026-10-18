@@ -13,18 +13,17 @@ ND.explain = (function () {
     if (k.status === ST.NODATA) return "Отвечено меньше половины основных вопросов, поэтому оценки нет.";
     // округление не должно давать «40: ниже 40»: значение показывается в пределах своего диапазона
     const s = k.status === ST.NO ? Math.min(39, pct(k.s)) : k.status === ST.PROB && k.s < P.thetaHi ? Math.min(59, Math.max(40, pct(k.s))) : pct(k.s);
-    if (k.status === ST.MET) return `Выраженность ${s}: не ниже порога 60.` + (k.hi > k.lo ? ` Даже с учётом «не уверен(а)» нижняя граница ${pct(k.lo)} не ниже 60.` : "");
+    if (k.status === ST.MET) return `Выраженность ${s}: не ниже порога 60.`;
     if (k.status === ST.PROB) {
       const parts = [];
-      if (k.s >= P.thetaHi && k.lo < P.thetaHi && !extra) parts.push(`Выраженность ${s} выше 60, но из-за отметок «не уверен(а)» нижняя граница ${pct(k.lo)}. Чтобы засчитать «выполнен», весь диапазон должен быть не ниже 60.`);
-      else if (k.s >= P.thetaHi && extra) parts.push(`Выраженность ${s} выше 60, но ${extra}.`);
+      if (k.s >= P.thetaHi && extra) parts.push(`Выраженность ${s} выше 60, но ${extra}.`);
       else {
         parts.push(`Выраженность ${s}: между 40 и 60. До «выполнен» не хватает ${gap(k.s, P.thetaHi)}.`);
         if (extra) parts.push(`Кроме того, ${extra}.`);
       }
       return parts.join(" ");
     }
-    return `Выраженность ${s}: ниже 40.` + (k.hi > k.s ? ` С учётом «не уверен(а)» верхняя граница ${pct(k.hi)}, тоже ниже 40.` : ` До «вероятно» не хватает ${gap(k.s, P.thetaLo)}.`);
+    return `Выраженность ${s}: ниже 40.` + ` До «вероятно» не хватает ${gap(k.s, P.thetaLo)}.`;
   }
 
   // DSM требует «часто»: есть ли у симптома ответ с частотой «часто» или «почти всегда»

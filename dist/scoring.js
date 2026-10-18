@@ -1,6 +1,7 @@
 // Движок подсчёта ND-Screen v0.2 (см. spec §5). Чистые функции, без DOM.
 // Ответ на пункт:
-//   { now: {I, F}, child: {I, F, unknown}, ctx: [], mask: 0..2, harm: 0..3, unsure, note, na, rt }
+//   { now: {I, F}, child: {I, F, unknown}, ctx: [], mask: 0..2, harm: 0..3, ctxUnk, maskUnk, harmUnk, note, na, rt }
+// ctx, mask и harm учитываются, только если сейчас признак есть хотя бы «частично» (now.I >= 2); «не знаю» = нет ответа.
 //   для kind=func: { now: {D}, child: {D} }
 // I: 0..4, F: "rare"|"some"|"often"|"always", D: 0..3
 
@@ -10,7 +11,6 @@ ND.PARAMS = {
   alpha: 0.5,      // вес добавки за маскировку
   thetaHi: 0.6,    // порог «выполнен»
   thetaLo: 0.4,    // порог «вероятно»
-  unsureBand: 0.2, // ширина интервала для неуверенных ответов
   minCoverage: 0.5,
   adhdAdult: 5,    // DSM-5-TR, 17+ лет
   adhdChildDsm: 3, // «несколько симптомов до 12 лет»
@@ -49,20 +49,19 @@ ND.scoring = (function () {
     const In = p.I / 4;
     if (item.rev) return { s: 1 - In, lo: 1 - In, hi: 1 - In };
     // у сильных сторон частота не спрашивается, поэтому балл равен уровню согласия (иначе «полностью да» давало бы максимум 0.75)
-    if (item.kind === "strength") { const band = r.unsure ? P.unsureBand : 0; return { s: In, lo: Math.max(0, In - band), hi: Math.min(1, In + band) }; }
+    if (item.kind === "strength") return { s: In, lo: In, hi: In };
     const Fn = p.F ? ND.FREQ[p.F] : p.I >= 2 ? 0.5 : 0.2;
     let s = In * (0.5 + 0.5 * Fn);
-    // поправка на маскировку пропорциональна силе признака: при «скорее нет» она почти не действует.
-    // Вопрос «скрываете ли вы» задан про настоящее, поэтому к ответам о детстве поправка не применяется.
-    const m = period === "now" && !item.noMask ? r.mask || 0 : 0;
+    // поправка на маскировку пропорциональна силе признака.
+    // Вопрос «видно ли со стороны» задан про настоящее и показывается только при «частично» и выше,
+    // поэтому к ответам о детстве и к «скорее нет» поправка не применяется.
+    const m = period === "now" && !item.noMask && p.I >= 2 ? r.mask || 0 : 0;
     if (s > 0 && m > 0) s = s + P.alpha * (m / 2) * (1 - s) * In;
-    const band = r.unsure ? P.unsureBand : 0;
-    return { s, lo: Math.max(0, s - band), hi: Math.min(1, s + band) };
+    return { s, lo: s, hi: s };
   }
 
-  // Статус по интервалу [lo, hi]. Без «не уверен(а)» интервал сжат в точку и решает сам балл.
-  // «Выполнен» — весь интервал не ниже верхнего порога; «нет» — весь интервал ниже нижнего;
-  // если неуверенность не позволяет ни подтвердить, ни исключить, статус «вероятно».
+  // Статус по баллу. Поля lo и hi остались от галочки «не уверен(а)» (убрана в v0.9) и теперь равны s.
+  // «Выполнен» — не ниже верхнего порога; «нет» — ниже нижнего; между ними «вероятно».
   function classify(agg, coverage, extraOk = true) {
     if (coverage < P.minCoverage) return ST.NODATA;
     if (agg.lo >= P.thetaHi && extraOk) return ST.MET;
@@ -168,23 +167,8 @@ ND.scoring = (function () {
       flags.push({ code: "pair", severity: badPairs.length >= 2 ? "hard" : "soft", items: badPairs.flat(), details: pairDetails,
         text: `Противоречат друг другу ответы в ${badPairs.length} из ${checkedPairs} пар вопросов с противоположным смыслом.` });
 
-    // 2. Противоречия внутри одного ответа: «совсем нет», но «мешает заметно/сильно» или «не видно, скрываю с усилием».
-    // Отмеченные места при «совсем нет» не считаются противоречием: люди часто отмечают, где бывает сама ситуация,
-    // а в подсчёт места при таком ответе и так не попадают.
-    const inner = [];
-    for (const it of ND.ITEMS.filter((x) => !x.rev && !x.kind && ND.eligible(x, R))) {
-      const r = ans(it.id);
-      if (!r || !r.now || r.now.I !== 0) continue;
-      checks++;
-      const fields = ["I"], why = [];
-      if (r.harm >= 2) { fields.push("harm"); why.push("что он мешает"); }
-      if (r.mask === 2 && !it.noMask) { fields.push("mask"); why.push("что вы его полностью скрываете"); }
-      if (why.length) inner.push({ strength: r.harm === 3 || why.length === 2 ? "strong" : "moderate", refs: [{ id: it.id, period: "now", fields }],
-        why: `Выбрано «совсем нет», то есть признака нет, но при этом отмечено, ${why.join(" и ")}. Одно из двух, скорее всего, отмечено по ошибке.` });
-    }
-    if (inner.length)
-      flags.push({ code: "inner", severity: inner.length >= 5 ? "hard" : "soft", items: inner.map((x) => x.refs[0].id), details: inner,
-        text: `${plural(inner.length, "В {n} ответе", "В {n} ответах", "В {n} ответах")} выбрано «совсем нет», но при этом отмечено, что признак мешает или скрывается с усилием.` });
+    // 2. Противоречий внутри одного ответа больше нет: при «совсем нет» и «скорее нет» поля «мешает» и «видно ли»
+    // не показываются и не учитываются.
 
     // 3. Отдельные вопросы против итоговых вопросов о жизни: по отдельным признакам «мешает заметно или сильно»,
     // а во всех сферах жизни «не мешали». Мягкий флаг: человек мог оценивать сферы по-другому.
@@ -201,7 +185,7 @@ ND.scoring = (function () {
 
     // 4. Камуфляж: в вопросах о маскировке почти везде «нет», но в вопросах об общении многое «не видно, скрываю с усилием».
     const camo = constructScore("CAMO", R, "now");
-    const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 1 && r.mask === 2; });
+    const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && r.mask === 2; });
     if (camo.n >= 3) {
       checks++;
       if (camo.s < 0.25 && hidden.length >= 4) {
