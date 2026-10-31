@@ -100,7 +100,7 @@ ND.clinician = (function () {
     const sc = Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.answered);
     const co = ND.ITEMS.filter((it) => it.kind === "comorb" && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I === 0);
     const opened = ND.ITEMS.filter((it) => ND.eligible(it, R));
-    const answered = opened.filter((it) => R[it.id] && (R[it.id].na || (R[it.id].now && (R[it.id].now.I != null || R[it.id].now.D != null || R[it.id].now.unknown)))).length;
+    const answered = opened.filter((it) => R[it.id] && (R[it.id].na || R[it.id].h != null || (R[it.id].now && (R[it.id].now.I != null || R[it.id].now.D != null || R[it.id].now.unknown)))).length;
     const hard = E.validity.some((f) => f.severity === "hard");
     const T = []; // текстовая версия
     const h = [];
@@ -224,6 +224,22 @@ ND.clinician = (function () {
     const V = E.validity;
     h.push(`<section class="block"><h2>Согласованность ответов</h2><p>${esc(summaryLine(V))}</p>${V.map((f) => `<div class="flag"><b>${f.severity === "hard" ? "Существенно" : "Незначительно"}</b><span>${esc(f.text)}</span></div>${(f.details || []).map((d) => conflictHtml(d, R)).join("")}`).join("")}</section>`);
     T.push("СОГЛАСОВАННОСТЬ", "  " + summaryLine(V), ...V.flatMap((f) => [`  [${f.severity === "hard" ? "существенно" : "незначительно"}] ${f.text}`, ...(f.details || []).flatMap((d) => conflictText(d, R).map((x) => "    " + x))]), "");
+
+    // Раннее развитие и семья (со слов, в подсчёт не входит)
+    const HX = ND.insights ? ND.insights.history(R) : { rows: [], notes: [] };
+    if (HX.rows.length) {
+      h.push(`<section class="block"><h2>Раннее развитие и семья (со слов)</h2><div class="tbl-wrap"><table><tbody>${HX.rows.map((x) => `<tr><td>${esc(x.t)}</td><td>${x.flagged ? "<b>" : ""}${esc(x.answer)}${x.flagged ? "</b>" : ""}</td></tr>`).join("")}</tbody></table></div>
+        ${HX.notes.map((n) => `<p class="small muted">${esc(n.text)}</p>`).join("")}</section>`);
+      T.push("РАННЕЕ РАЗВИТИЕ И СЕМЬЯ (со слов, в подсчёт не входит)", ...HX.rows.map((x) => `  ${x.t}: ${x.answer}`), "");
+    }
+    // Карта масок: где и что пациент скрывает (по полям «где проявляется» и «видно ли со стороны»)
+    const MM = ND.insights ? ND.insights.maskMap(E, R) : { n: 0 };
+    if (MM.n >= 3) {
+      const pl = MM.places.map((x) => `${x.label.toLowerCase()} ${x.hidden}/${x.n}`).join(", ");
+      const ar = MM.areas.map((x) => `${x.label.toLowerCase()} ${x.hidden}/${x.n}`).join(", ");
+      h.push(`<section class="block"><h2>Карта масок (самоотчёт)</h2><p>Скрывает ${MM.hidden} из ${MM.n} признаков с ответом «видно ли со стороны», с усилием ${MM.effort}.</p><p class="small">По обстановке: ${esc(pl)}.<br>По сферам: ${esc(ar)}.</p><p class="small muted">Вопрос о видимости задан про признак в целом, а не про каждую обстановку, поэтому распределение приблизительное.</p></section>`);
+      T.push("КАРТА МАСОК (самоотчёт)", `  Скрывает ${MM.hidden} из ${MM.n} признаков, с усилием ${MM.effort}`, `  По обстановке: ${pl}`, `  По сферам: ${ar}`, "");
+    }
 
     // Темы для интервью
     const scored = opened.filter((it) => !it.rev && !it.kind && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I >= 2);

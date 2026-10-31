@@ -204,7 +204,7 @@ ND.scoring = (function () {
 
     // 6. Однообразие, скорость, «неприменимо»
     // шкалы (PHQ-9, GAD-7, PAQ, ABSI) и сопутствующие состояния в проверку согласованности не входят
-    const extra = (it) => it.kind === "scale" || it.kind === "comorb";
+    const extra = (it) => it.kind === "scale" || it.kind === "comorb" || it.kind === "hist";
     const core = ND.ITEMS.filter((x) => !extra(x)).map((x) => R[x.id]);
     const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength" && !extra(x)).map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
