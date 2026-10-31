@@ -667,5 +667,25 @@ check("нет пояснений к несуществующим вопроса�
   check("ACI, черты и новые сопутствующие не меняют подсчёт", JSON.stringify({ ...ND.scoring.evaluate(S2), scales: null }) === base);
 }
 
+// ── v0.12.1: выводы по заданиям лаборатории ──
+{
+  const L = ND.lab, V = L.verdict;
+  const rt = (cv) => ({ done: true, enough: true, cv, cv1: cv, cv2: cv });
+  check("вывод реакции: три уровня", V("rt", rt(0.1)).tone === "ok" && V("rt", rt(0.25)).tone === "mid" && V("rt", rt(0.4)).tone === "high");
+  check("вывод реакции: граница по показанному округлению (0,296 → 0,30 → «волнами»)", V("rt", rt(0.296)).tone === "high");
+  check("вывод реакции: мало данных — оценить нельзя", V("rt", { done: true, enough: false }).tone === "na");
+  const tp = (err) => ({ done: true, err, dir: "fast" });
+  check("вывод интервалов: три уровня", V("tp", tp(0.05)).tone === "ok" && V("tp", tp(0.2)).tone === "mid" && V("tp", tp(0.5)).tone === "high" && /спешат/.test(V("tp", tp(0.5)).means));
+  check("вывод нагрузки: запас, обычный фильтр, ненадёжно", /запас/.test(V("load", { done: true, bigCapacity: true }).title) && /фильтр/.test(V("load", { done: true, bigCapacity: false }).title) && V("load", { done: true, unreliable: true }).tone === "na");
+  check("вывод Навона: лес, деревья, одинаково", /лес, потом/.test(V("navon", { done: true, enough: true, globalAdv: 80 }).title) && /деревья, потом/.test(V("navon", { done: true, enough: true, globalAdv: -80 }).title) && /одинаково/.test(V("navon", { done: true, enough: true, globalAdv: 0 }).title));
+  check("вывод «сейчас или потом»: три уровня", V("dd", { complete: true, auc: 0.9 }).tone === "ok" && V("dd", { complete: true, auc: 0.5 }).tone === "mid" && V("dd", { complete: true, auc: 0.1 }).tone === "high");
+  check("вывод проб: вокруг 47%", V("probe", { enough: true, share: 0.1 }).tone === "ok" && V("probe", { enough: true, share: 0.5 }).tone === "mid" && V("probe", { enough: true, share: 0.8 }).tone === "high");
+  check("нет вывода без данных", V("rt", { done: false }) === null && V("dd", { complete: false }) === null && V("probe", { enough: false }) === null);
+  const SL = ND.sampleLab(), all = [V("rt", L.rtSummary(SL.rt)), V("tp", L.tpSummary(SL.tp)), V("load", L.loadSummary(SL.load)), V("navon", L.navonSummary(SL.navon)), V("dd", L.discount(SL.dd)), V("probe", L.probeSummary(SL.probes))];
+  check("пример: у всех заданий есть вывод без пустых полей", all.every((v) => v && v.title && v.means && !/undefined|NaN/.test(JSON.stringify(v))), all);
+  const C = ND.clinician.build(ND.sampleResponses(), SL);
+  check("выводы есть в отчёте для специалиста", /Выводы \(ориентир, не норма\)/.test(C.text));
+}
+
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);
