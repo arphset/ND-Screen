@@ -593,5 +593,57 @@ check("нет пояснений к несуществующим вопроса�
   check("музыка: петля одинакова для раздела, 16 шагов, 4 баса", JSON.stringify(m1) === JSON.stringify(m2) && m1.mel.length === 16 && m1.bass.length === 4);
 }
 
+// ── v0.12: лаборатория, задания Б10–Б13 ──
+{
+  const L = ND.lab;
+  // Б10: разброс времени реакции
+  const flat = Array.from({ length: L.RT.N }, () => ({ rt: 300 }));
+  const wavy = Array.from({ length: L.RT.N }, (_, i) => ({ rt: i % 2 ? 250 : 650 }));
+  const F = L.rtSummary(flat), W = L.rtSummary(wavy);
+  check("реакция: одинаковые ответы дают нулевой разброс", F.done && F.enough && F.cv === 0 && F.median === 300 && F.slow === 0, F);
+  check("реакция: «волны» дают большой разброс", W.cv > 0.4 && W.median === 450, W);
+  const mixed = [{ rt: 300, practice: true }, { rt: null, early: true }, { rt: 90 }, { rt: null }, { rt: 1800 }, ...Array(30).fill({ rt: 300 })];
+  const M = L.rtSummary(mixed);
+  check("реакция: тренировка не считается, ранние/пропуски/слишком быстрые отдельно", M.n === 34 && M.valid === 30 && M.early === 1 && M.miss === 2 && M.tooFast === 1 && !M.done, M);
+  check("реакция: меньше 30 засчитанных — разброса нет", !L.rtSummary(Array(20).fill({ rt: 300 })).enough);
+  const fp = L.rtForeperiods(7);
+  check("реакция: паузы 1–3 с, детерминированы", fp.length === L.RT.N + L.RT.PRACTICE && fp.every((x) => x >= 1000 && x <= 3000) && JSON.stringify(fp) === JSON.stringify(L.rtForeperiods(7)));
+  // Б11: интервалы
+  const T1 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t * 0.5 })));
+  const T2 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t * 2 })));
+  const T3 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t })));
+  check("интервалы: вдвое короче и вдвое дольше симметричны", T1.done && Math.abs(T1.gm - 0.5) < 1e-9 && Math.abs(T2.gm - 2) < 1e-9 && T1.dir === "fast" && T2.dir === "slow" && T3.dir === "ok" && T3.err === 0);
+  check("интервалы: различие повторов считается", Math.abs(L.tpSummary([{ target: 10, produced: 8 }, { target: 10, produced: 12 }]).repeatDiff - 0.4) < 1e-9);
+  // Б12: нагрузка
+  const LT = L.loadTrials(3);
+  const cnt = (f) => LT.filter(f).length;
+  check("нагрузка: 32 попытки, 16/16, квадрат в половине каждого уровня, X и N поровну", LT.length === 32 && cnt((t) => t.load === "low") === 16 && cnt((t) => t.load === "low" && t.extra) === 8 && cnt((t) => t.load === "high" && t.extra) === 8 && cnt((t) => t.target === "X") === 16);
+  check("нагрузка: при низкой нагрузке только «o», при высокой разные буквы без X и N", LT.every((t) => t.fill.length === 5 && (t.load === "low" ? t.fill.every((c) => c === "o") : new Set(t.fill).size === 5 && !t.fill.some((c) => c === "X" || c === "N"))));
+  const typical = LT.map((t) => ({ ...t, ans: t.target, saw: t.extra && (t.load === "low" || t.target === "X") }));
+  const LS = L.loadSummary(typical);
+  check("нагрузка: падение обнаружения при высокой нагрузке считается", LS.done && LS.low.hit === 1 && LS.high.hit === 0.5 && Math.abs(LS.drop - 0.5) < 1e-9 && LS.low.fa === 0 && !LS.unreliable, LS);
+  check("нагрузка: типичное падение — не «большой запас»", !LS.bigCapacity && !LS.lowMissed);
+  const all = L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: t.extra })));
+  check("нагрузка: замечает при любой нагрузке — «большой запас»", all.bigCapacity && all.drop === 0);
+  const fa = L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: t.extra || (t.load === "high" && t.target === "X") })));
+  check("нагрузка: ложные «видел» вычитаются из замеченных", Math.abs(fa.high.net - 0.5) < 1e-9 && !fa.bigCapacity, fa.high);
+  check("нагрузка: не замечал и при лёгком поиске — сравнение не делается", L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: false }))).lowMissed);
+  check("нагрузка: «вижу всегда» помечается как ненадёжное", L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: true }))).unreliable);
+  // Б13: Навон
+  const NT = L.navonTrials(11), real = NT.filter((t) => !t.practice);
+  check("Навон: 2 блока по 16 и по 4 тренировочные, все 4 сочетания поровну", real.length === 32 && NT.length === 40 && ["global", "local"].every((b) => real.filter((t) => t.block === b).length === 16 && real.filter((t) => t.block === b && t.big === t.small).length === 8));
+  const ans = real.map((t) => ({ ...t, ans: t.block === "global" ? t.big : t.small, rt: (t.block === "global" ? 500 : 600) + (t.big !== t.small ? 50 : 0) }));
+  const NS = L.navonSummary(ans);
+  check("Навон: глобальное преимущество и интерференция", NS.enough && NS.globalAdv === 100 && NS.global.interf === 50 && NS.local.interf === 50 && NS.global.acc === 1, NS);
+  check("Навон: много ошибок — ненадёжно", !L.navonSummary(real.map((t) => ({ ...t, ans: "Н", rt: 500 }))).enough);
+  check("Навон: формы букв 5×7", Object.values(L.NAVON_SHAPES).every((g) => g.length === 7 && g.every((r) => r.length === 5)));
+  // ничего из этого не трогает баллы
+  const S = ND.sampleResponses(), E1 = JSON.stringify(ND.scoring.evaluate(S)), SL = ND.sampleLab();
+  check("пример: все четыре задания пройдены", L.rtSummary(SL.rt).enough && L.tpSummary(SL.tp).done && L.loadSummary(SL.load).done && L.navonSummary(SL.navon).enough);
+  const C = ND.clinician.build(S, SL);
+  check("задания попадают в отчёт специалиста внутри раздела лаборатории", /Простая реакция/.test(C.text) && /Отмеривание интервалов/.test(C.text) && /Перцептивная нагрузка/.test(C.text) && /Фигуры Навона/.test(C.text) && C.text.replace(/ЛАБОРАТОРИЯ[\s\S]*?\n\n/, "") === ND.clinician.build(S).text);
+  check("задания не меняют evaluate", JSON.stringify(ND.scoring.evaluate(S)) === E1);
+}
+
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);

@@ -320,7 +320,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   // Разделы PHQ-9, GAD-7 и ABSI проходят без игровых элементов: без музыки, персонажа и проб.
   const CALM = new Set(["mood", "burnout"]);
   const restore = () => { const x = load() || fresh(); x.seen = x.seen || {}; x.breaks = x.breaks || []; return x; };
-  const labState = () => ({ probes: state.probe && state.probe.list, dd: state.lab && state.lab.dd });
+  const labState = () => { const L = state.lab || {}; return { probes: state.probe && state.probe.list, dd: L.dd, rt: L.rt, tp: L.tp, tpCounted: L.tpCounted, load: L.load, navon: L.navon }; };
   // в примере отчёта настройки оформления тоже сохраняем, но в настоящие ответы
   function savePref() {
     if (!state.sample) return;
@@ -431,7 +431,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       <line x1="36" y1="${y(ND.lab.LATER)}" x2="${W - 14}" y2="${y(ND.lab.LATER)}" class="ref"/>
       <line x1="36" y1="${y(0)}" x2="${W - 14}" y2="${y(0)}" class="axis"/>
       ${[0, 5000, 10000].map((v) => `<text x="30" y="${y(v) + 4}" text-anchor="end">${v / 1000}к</text>`).join("")}
-      ${[[0, "сегодня"], [30, "1 мес"], [182, "6 мес"], [365, "1 год"]].map(([dd, l], i) => `<text x="${x(dd)}" y="${H - 12}" text-anchor="${i ? (i === 3 ? "end" : "middle") : "start"}">${l}</text>`).join("")}
+      ${[[0, "сегодня"], [182, "6 мес"], [365, "1 год"]].map(([dd, l], i) => `<text x="${x(dd)}" y="${H - 12}" text-anchor="${i ? (i === 2 ? "end" : "middle") : "start"}">${l}</text>`).join("")}
       <polygon points="${x(0)},${y(0)} ${pts.map((p) => `${x(p.days)},${y(p.ip)}`).join(" ")} ${x(365)},${y(0)}" class="area"/>
       <polyline points="${pts.map((p) => `${x(p.days)},${y(p.ip)}`).join(" ")}" class="curve"/>
       ${D.points.map((p) => `<circle cx="${x(p.days)}" cy="${y(p.ip)}" r="4"/>`).join("")}
@@ -447,40 +447,309 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       ${D.jumps ? `<p class="small muted">При большем сроке вы иногда соглашались на большую сумму, чем при меньшем. Так бывает при невнимательном выборе, поэтому результат менее надёжен (критерий Johnson & Bickel, 2008).</p>` : ""}
       ${full ? `<p class="small muted">Норм для взрослых в России нет, поэтому сравнить с «обычным» значением нельзя. В метаанализе у людей с СДВГ предпочтение немедленной награды в среднем умеренно сильнее, чем без СДВГ (Jackson & MacKillop, 2016), но разброс между людьми большой, и по одному результату ничего сказать нельзя. Выбор зависит и от инфляции, доверия к обещаниям и того, насколько сейчас нужны деньги. Методика: подстройка суммы (Du, Green & Myerson, 2002), площадь под кривой (Myerson, Green & Warusawitharana, 2001); гипотетические и реальные деньги дают близкие результаты (Johnson & Bickel, 2002).</p>` : ""}`;
   }
+  // ───────── Б10–Б13. Задания на время реакции и восприятие ─────────
+  const ms = (x) => (x == null ? "—" : Math.round(x) + " мс");
+  const pc0 = (x) => (x == null ? "—" : Math.round(x * 100) + "%");
+  const dec2 = (x) => (x == null ? "—" : x.toFixed(2).replace(".", ","));
+  const MAPLINK = (id, t) => `<a href="https://neurodivergentmap.vercel.app/#${id}" target="_blank" rel="noopener">${t}</a>`;
+  const TASKS = {
+    rt: { title: "Ровно или волнами", time: "около 3 минут",
+      what: "Нажимайте как можно быстрее, когда появится кружок. Смотрим не на скорость, а на то, насколько ровно вы отвечаете.",
+      how: ["В центре будет крестик. Через 1–3 секунды вместо него появится кружок.", "Как только он появится, нажмите пробел или коснитесь серой области.", "Не нажимайте заранее. Всего 50 попыток и 3 тренировочные.", "Лучше проходить на компьютере, в тишине и не отвлекаясь."] },
+    tp: { title: "Тридцать секунд", time: "около 3 минут",
+      what: "Отмерьте по ощущению 10, 30 и 60 секунд без часов. Так видно, спешат ваши внутренние часы или отстают.",
+      how: ["Нажмите «Старт», а потом «Стоп», когда, по ощущению, пройдёт названное время.", "Не смотрите на часы и постарайтесь не считать про себя: просто почувствуйте, когда пора.", "Всего 5 интервалов: 10, 30, 60, 30 и 10 секунд."] },
+    load: { title: "Сколько вы замечаете", time: "около 3 минут",
+      what: "На долю секунды появится кольцо из букв. Нужно найти X или N, а заодно сказать, не мелькнуло ли сбоку что-то ещё.",
+      how: ["Смотрите на крестик в центре. На 0,1 секунды вокруг него появятся буквы.", "Среди них есть X или N. Ответьте, какая это была буква (клавиши X и N или кнопки).", "Затем ответьте, был ли сбоку маленький серый квадрат. Он бывает не всегда.", "Сначала 4 тренировочные попытки помедленнее, потом 32 настоящие."] },
+    navon: { title: "Лес или деревья", time: "около 2 минут",
+      what: "Большая буква сложена из маленьких. В одной части называете большую букву, в другой маленькие. Сравниваем, что вы видите быстрее: целое или детали.",
+      how: ["Буквы только две: Н и С.", "Отвечайте кнопками или клавишами: ← или Н — это «Н», → или С — это «С».", "Отвечайте быстро, но без ошибок. В каждой части сначала 4 тренировочные попытки."] },
+  };
+  const labData = () => state.lab || (state.lab = { dd: {} });
+  const labSeed = () => { const L = labData(); if (!L.seed) L.seed = (Math.random() * 4294967295) >>> 0 || 1; return L.seed; };
+  const sumOf = (task, L) => {
+    L = L || state.lab || {};
+    if (task === "rt") return ND.lab.rtSummary(L.rt);
+    if (task === "tp") return ND.lab.tpSummary(L.tp);
+    if (task === "load") return ND.lab.loadSummary(L.load);
+    if (task === "navon") return ND.lab.navonSummary(L.navon);
+    return null;
+  };
+  function spark(series) {
+    const W = 320, H = 90, vals = series.filter((x) => x != null), max = Math.min(1500, Math.max(400, ...vals));
+    const x = (i) => 6 + (i / Math.max(1, series.length - 1)) * (W - 12), y = (v) => H - 8 - (Math.min(v, max) / max) * (H - 16);
+    const pts = series.map((v, i) => (v == null ? null : `${x(i).toFixed(1)},${y(v).toFixed(1)}`)).filter(Boolean).join(" ");
+    return `<svg class="rt-spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Время каждого ответа по порядку">
+      <line x1="6" x2="${W - 6}" y1="${H - 8}" y2="${H - 8}" class="axis"/>
+      <polyline points="${pts}" class="curve"/>
+      ${series.map((v, i) => (v == null ? `<text x="${x(i)}" y="${H - 1}" text-anchor="middle">·</text>` : "")).join("")}
+    </svg>`;
+  }
+  function rtHtml(S, full) {
+    if (!S || !S.done) return "";
+    if (!S.enough) return `<h3>${TASKS.rt.title}</h3><p class="small muted">Засчитанных ответов ${S.valid} из ${S.n}: слишком много нажатий заранее или пропусков, чтобы посчитать разброс. Попробуйте пройти ещё раз в спокойной обстановке.</p>`;
+    const tired = S.cv1 != null && S.cv2 != null && S.cv2 - S.cv1 >= 0.08;
+    return `<h3>${TASKS.rt.title}</h3>
+      <p>Обычное время ответа ${ms(S.median)}. Разброс: коэффициент вариации <b class="mono">${dec2(S.cv)}</b> (стандартное отклонение ${ms(S.sd)} при среднем ${ms(S.mean)}). Очень медленных ответов, вдвое дольше обычного: ${S.slow} из ${S.valid}.${S.early ? ` Нажатий заранее: ${S.early}.` : ""}${S.miss ? ` Пропусков: ${S.miss}.` : ""}</p>
+      ${spark(S.series)}
+      <p class="small">Чем выше коэффициент вариации, тем сильнее ответы «гуляют» от попытки к попытке.${tired ? ` Во второй половине разброс стал больше (${dec2(S.cv1)} → ${dec2(S.cv2)}): так часто проявляется усталость.` : ""}</p>
+      ${full ? `<p class="small muted">Это один из самых устойчивых лабораторных признаков СДВГ: в метаанализе 319 исследований время реакции при СДВГ было заметно изменчивее, а если это учесть, люди с СДВГ в среднем не медленнее. У взрослых различие меньше, чем у детей (Kofler et al., 2013). В жизни это похоже на «сегодня получается, завтра нет», и это не лень. Норм для такого короткого задания в браузере нет. Разброс зависит и от усталости, сна, кофе и устройства, поэтому по одному результату ничего нельзя сказать о диагнозе. Подробнее: ${MAPLINK("rt_variability", "«Нестабильность внимания» на карте")}.</p>` : ""}`;
+  }
+  function tpHtml(S, full) {
+    if (!S || !S.done) return "";
+    const L = state.lab || {};
+    const words = { fast: "Вы в среднем останавливались раньше, чем нужно: внутренние часы, похоже, спешат, и время кажется прошедшим раньше, чем на самом деле.", slow: "Вы в среднем останавливались позже, чем нужно: внутренние часы, похоже, отстают, и время проходит незаметнее, чем кажется.", ok: "В среднем вы отмеряли время довольно точно." }[S.dir];
+    const rel = (r) => (r < 1 ? `на ${Math.round((1 - r) * 100)}% короче` : r > 1 ? `на ${Math.round((r - 1) * 100)}% дольше` : "точно");
+    return `<h3>${TASKS.tp.title}</h3>
+      <p>${S.items.map((t) => `${t.target} с → <b class="mono">${t.produced.toFixed(1).replace(".", ",")} с</b>`).join(" · ")}</p>
+      <p>${words} В среднем ${rel(S.gm)}, средняя ошибка ${pc0(S.err)}.${S.repeatDiff != null && S.repeatDiff >= 0.25 ? " Повторы одного и того же интервала заметно отличались, то есть чувство времени у вас нестабильно." : ""}</p>
+      ${L.tpCounted ? `<p class="small muted">Вы отметили, что считали про себя. Со счётом задача проще, поэтому результат меньше говорит о чувстве времени.</p>` : ""}
+      ${full ? `<p class="small muted">В метаанализе у людей с СДВГ точность отмеривания и оценки интервалов была ниже, что авторы объясняют «ускоренными внутренними часами» (Marx et al., 2021); у детей и подростков с СДВГ оценки менее точны и менее стабильны (Zheng et al., 2022). По одному прохождению из 5 интервалов судить о диагнозе нельзя. Если время ускользает в жизни, помогает сделать его видимым: аналоговые часы, визуальный таймер, будильники на начало сборов. Подробнее: ${MAPLINK("time_blindness", "«Слепота ко времени» на карте")}.</p>` : ""}`;
+  }
+  function loadHtml(S, full) {
+    if (!S || !S.done) return "";
+    const big = S.bigCapacity, ok = !S.unreliable && !S.guessing && !S.lowMissed;
+    return `<h3>${TASKS.load.title}</h3>
+      <p>Квадрат сбоку вы заметили в <b>${pc0(S.low.hit)}</b> попыток при лёгком поиске и в <b>${pc0(S.high.hit)}</b> при трудном. Букву назвали верно в ${pc0(S.low.acc)} и ${pc0(S.high.acc)} попыток.</p>
+      <p>${S.drop == null || !ok ? "" : big ? "Трудный поиск почти не мешал замечать лишнее. Похоже, у вас большой запас восприятия: вы видите больше, чем нужно для задачи. Это помогает замечать детали, ошибки и перемены. Обратная сторона: в насыщенной обстановке мозг продолжает обрабатывать всё подряд, и усталость приходит быстрее." : "При трудном поиске лишнее вы замечали реже. Так у большинства людей: трудная задача забирает внимание целиком и отсекает всё постороннее."}</p>
+      ${S.unreliable ? `<p class="small muted">Квадрат часто «виделся» и тогда, когда его не было (${pc0((S.low.fa + S.high.fa) / 2)} таких попыток), поэтому ответы о нём ненадёжны.</p>` : ""}
+      ${S.lowMissed ? `<p class="small muted">Квадрат редко замечался даже при лёгком поиске, поэтому сравнить уровни нагрузки не получается. Возможно, он слишком мелкий на вашем экране или взгляд уходил от центра.</p>` : ""}
+      ${S.guessing ? `<p class="small muted">При трудном поиске буква угадывалась не лучше случайного, поэтому сравнение ненадёжно.</p>` : ""}
+      ${full ? `<p class="small muted">Задание сделано по образцу опытов Нилли Лави. Типичные взрослые при высокой нагрузке замечали лишний объект заметно реже, а у аутичных взрослых нагрузка на это почти не влияла: авторы объясняют это большей ёмкостью восприятия (Remington, Swettenham & Lavie, 2012; Remington et al., 2009; у детей: Swettenham et al., 2014). Исследований немного, а в задании всего 8 попыток с квадратом на каждый уровень, поэтому это наблюдение, а не измерение. Время показа зависит от экрана. Подробнее: ${MAPLINK("perceptual_capacity", "«Ёмкость восприятия» на карте")}.</p>` : ""}`;
+  }
+  function navonHtml(S, full) {
+    if (!S || !S.done) return "";
+    if (!S.enough) return `<h3>${TASKS.navon.title}</h3><p class="small muted">Ошибок было много (большая буква: ${pc0(S.global.acc)} верно, маленькие: ${pc0(S.local.acc)}), поэтому сравнение ненадёжно. Можно пройти ещё раз.</p>`;
+    const a = S.globalAdv;
+    const words = a > 30 ? "Целое вы называли быстрее деталей. Так у большинства людей: сначала лес, потом деревья." : a < -30 ? "Детали вы называли быстрее целого: сначала деревья, потом лес. Это стиль восприятия, а не недостаток." : "Целое и детали вы называли примерно одинаково быстро.";
+    const gI = S.local.interf, lI = S.global.interf;
+    const itf = (x, what) => (x == null ? `${what}: нет данных` : x > 20 ? `${what} (ответ медленнее на ${ms(x)})` : `${what.replace("мешало", "почти не мешало").replace("мешали", "почти не мешали")}`);
+    return `<h3>${TASKS.navon.title}</h3>
+      <p>Большую букву вы называли за ${ms(S.global.rt)}, маленькие за ${ms(S.local.rt)}. ${words}</p>
+      <p class="small">Когда большая и маленькие буквы не совпадали, ${itf(gI, "целое мешало называть детали")}, ${itf(lI, "детали мешали называть целое")}.</p>
+      ${full ? `<p class="small muted">Задание на основе фигур Навона (Navon, 1977). В метаанализе 56 исследований у аутичных людей не нашли ни общего преимущества в деталях, ни «неспособности видеть целое», но целое в среднем замечалось немного позже (van der Hallen et al., 2015). Поэтому результат описывает стиль, а не дефицит. Норм нет, попыток немного. Подробнее: ${MAPLINK("detail_focus", "«Внимание к деталям» на карте")}.</p>` : ""}`;
+  }
+  const TASK_HTML = { rt: rtHtml, tp: tpHtml, load: loadHtml, navon: navonHtml };
+
+  // Прохождение заданий: состояние в RUN, экран обновляется точечно, чтобы не сбивать время.
+  let RUN = null;
+  const now = () => performance.now();
+  function runClear() { if (RUN) { RUN.timers.forEach(clearTimeout); RUN.timers = []; } }
+  function later(fn, t) { const id = setTimeout(fn, t); RUN.timers.push(id); return id; }
+  const stage = () => document.getElementById("lab-stage");
+  const setStage = (html) => { const s = stage(); if (s) s.innerHTML = html; };
+  const setControls = (html) => { const c = document.getElementById("lab-ctl"); if (c) c.innerHTML = html; };
+  const setCount = (txt) => { const c = document.getElementById("lab-count"); if (c) c.textContent = txt; };
+  function onPaint(fn) { requestAnimationFrame(() => requestAnimationFrame(fn)); }
+
+  function runStart(task) {
+    runClear();
+    const seed = labSeed() + (task.charCodeAt(0) * 7919);
+    RUN = { task, i: 0, rows: [], timers: [], phase: "", seed };
+    if (task === "rt") RUN.fps = ND.lab.rtForeperiods(seed);
+    if (task === "tp") RUN.list = ND.lab.TP_TARGETS;
+    if (task === "load") {
+      const pr = ND.lab.loadTrials(seed + 1).slice(0, 4).map((t, k) => ({ ...t, load: k % 2 ? "high" : "low", extra: k < 2 ? k === 0 : k === 3, practice: true }));
+      RUN.list = pr.concat(ND.lab.loadTrials(seed));
+    }
+    if (task === "navon") RUN.list = ND.lab.navonTrials(seed);
+    renderRunShell();
+    runNext();
+  }
+  function renderRunShell() {
+    const T = TASKS[RUN.task];
+    app.innerHTML = `<div class="wrap"><div class="card lab lab-run">
+      <div class="row" style="justify-content:space-between"><span class="eyebrow">${esc(T.title)}</span><span class="eyebrow mono" id="lab-count"></span></div>
+      <div class="lab-stage t-${RUN.task}" id="lab-stage" data-run="stage" aria-live="polite"></div>
+      <div class="lab-ctl" id="lab-ctl"></div>
+      <div class="nav"><button class="btn ghost" data-act="lab-stop">Прервать</button></div>
+    </div></div>`;
+  }
+  function runFinish() {
+    runClear();
+    const L = labData(), task = RUN.task;
+    if (task === "rt") L.rt = RUN.rows;
+    if (task === "tp") { L.tp = RUN.rows; L.tpCounted = RUN.counted; }
+    if (task === "load") L.load = RUN.rows.filter((r) => !r.practice);
+    if (task === "navon") L.navon = RUN.rows.filter((r) => !r.practice);
+    L.when = L.when || {}; L.when[task] = new Date().toISOString();
+    RUN = null; state.labTask = task; save(); render(); window.scrollTo(0, 0);
+  }
+  function runNext() {
+    const R = RUN;
+    if (R.task === "rt") {
+      const total = ND.lab.RT.N + ND.lab.RT.PRACTICE;
+      if (R.i >= total) return runFinish();
+      const practice = R.i < ND.lab.RT.PRACTICE;
+      setCount(practice ? `тренировка ${R.i + 1} из ${ND.lab.RT.PRACTICE}` : `${R.i - ND.lab.RT.PRACTICE + 1} из ${ND.lab.RT.N}`);
+      setStage(`<span class="fix">+</span>`); R.phase = "wait"; R.practice = practice;
+      later(() => { setStage(`<span class="rt-dot"></span>`); onPaint(() => { if (RUN !== R) return; R.t0 = now(); R.phase = "go";
+        later(() => { if (R.phase !== "go") return; R.rows.push({ rt: null, practice }); rtFeedback("Не успели"); }, ND.lab.RT.TIMEOUT); }); }, R.fps[R.i]);
+      setControls(`<p class="small muted">Пробел или касание серой области</p>`);
+    } else if (R.task === "tp") {
+      if (R.i >= R.list.length) {
+        setStage(`<p>Последний вопрос: вы считали про себя?</p>`); setCount("");
+        setControls(`<div class="hist-opts"><button class="opt" data-run="tp-count" data-v="1">Да, считал(а)</button><button class="opt" data-run="tp-count" data-v="0">Нет, по ощущению</button></div>`);
+        R.phase = "ask"; return;
+      }
+      setCount(`${R.i + 1} из ${R.list.length}`); R.phase = "ready";
+      setStage(`<p class="tp-goal">Отмерьте <b>${R.list[R.i]} секунд</b></p>`);
+      setControls(`<button class="btn primary big" data-run="tp-start">Старт</button>`);
+    } else if (R.task === "load") {
+      if (R.i >= R.list.length) return runFinish();
+      const t = R.list[R.i];
+      setCount(t.practice ? `тренировка ${R.i + 1} из 4` : `${R.i - 3} из ${ND.lab.LOAD.N}`);
+      if (R.i === 4 && !R.toldReal) { R.toldReal = true; R.phase = "pause"; setStage(`<p>Тренировка закончилась. Теперь буквы будут появляться быстрее.</p>`); setControls(`<button class="btn primary" data-run="go">Начать</button>`); return; }
+      R.phase = "fix"; setControls(""); setStage(`<span class="fix">+</span>`);
+      later(() => {
+        const ring = [], letters = [...t.fill]; letters.splice(t.pos, 0, t.target);
+        letters.forEach((ch, k) => { const ang = (k / 6) * 2 * Math.PI - Math.PI / 2; ring.push(`<span class="ld-l" style="left:calc(50% + ${Math.round(80 * Math.cos(ang))}px);top:calc(50% + ${Math.round(80 * Math.sin(ang))}px)">${ch}</span>`); });
+        setStage(`<span class="fix">+</span>${ring.join("")}${t.extra ? `<span class="ld-sq ${t.side}"></span>` : ""}`);
+        onPaint(() => { if (RUN !== R) return; R.t0 = now();
+          later(() => { setStage(`<span class="fix">+</span>`); R.phase = "ans";
+            setControls(`<p class="small">Какая была буква?</p><div class="dd-choice"><button class="dd-opt" data-run="ld-ans" data-v="X"><b>X</b></button><button class="dd-opt" data-run="ld-ans" data-v="N"><b>N</b></button></div>`); }, t.practice ? 250 : ND.lab.LOAD.SHOW);
+        });
+      }, 600);
+    } else if (R.task === "navon") {
+      if (R.i >= R.list.length) return runFinish();
+      const t = R.list[R.i], first = !R.i || R.list[R.i - 1].block !== t.block;
+      const blk = t.block === "global" ? "Называйте <b>большую</b> букву" : "Называйте <b>маленькие</b> буквы";
+      if (first && R.shownBlock !== t.block) { R.shownBlock = t.block; R.phase = "pause"; setCount(R.i ? "часть 2 из 2" : "часть 1 из 2"); setStage(`<p class="tp-goal">${blk}</p><p class="small muted">Сначала 4 тренировочные попытки.</p>`); setControls(`<button class="btn primary" data-run="go">Начать</button>`); return; }
+      const inBlock = R.list.filter((x, k) => k <= R.i && x.block === t.block && !x.practice).length;
+      setCount(t.practice ? "тренировка" : `${inBlock} из ${ND.lab.NAVON.PER}`);
+      R.phase = "fix"; setStage(`<span class="fix">+</span>`);
+      setControls(`<p class="small">${blk}</p><div class="dd-choice"><button class="dd-opt" data-run="nv-ans" data-v="Н"><b>Н</b><span>← или Н</span></button><button class="dd-opt" data-run="nv-ans" data-v="С"><b>С</b><span>→ или С</span></button></div>`);
+      later(() => {
+        const rows = ND.lab.NAVON_SHAPES[t.big].map((row) => `<div>${row.split("").map((c) => `<span>${c === "1" ? t.small : ""}</span>`).join("")}</div>`).join("");
+        setStage(`<div class="navon">${rows}</div>`);
+        onPaint(() => { if (RUN !== R) return; R.t0 = now(); R.phase = "go";
+          later(() => { if (R.phase !== "go") return; navonAnswer(null); }, ND.lab.NAVON.MAX + 500); });
+      }, 500);
+    }
+  }
+  function rtFeedback(txt) {
+    const R = RUN; R.phase = "fb"; setStage(`<span class="rt-fb">${txt}</span>`);
+    later(() => { R.i++; runNext(); }, 700);
+  }
+  function rtPress(e) {
+    const R = RUN;
+    if (R.phase === "go") { const rt = now() - R.t0; R.phase = "fb"; runClear(); R.rows.push({ rt: Math.round(rt), practice: R.practice }); rtFeedback(`${Math.round(rt)} мс`); }
+    else if (R.phase === "wait") { runClear(); R.rows.push({ rt: null, early: true, practice: R.practice }); rtFeedback("Рано! Ждите кружок"); }
+  }
+  function navonAnswer(v) {
+    const R = RUN, t = R.list[R.i]; if (R.phase !== "go") return;
+    const rt = v == null ? null : Math.round(now() - R.t0); runClear(); R.phase = "fb";
+    R.rows.push({ block: t.block, big: t.big, small: t.small, ans: v, rt, practice: !!t.practice });
+    const want = t.block === "global" ? t.big : t.small;
+    setStage(v === want ? "" : `<span class="rt-fb">${v == null ? "Не успели" : "Неверно"}</span>`);
+    later(() => { R.i++; runNext(); }, v === want ? 300 : 900);
+  }
+  function runInput(kind, v) {
+    const R = RUN; if (!R) return;
+    if (R.task === "rt" && kind === "press") return rtPress();
+    if (kind === "go" && R.phase === "pause") { R.phase = ""; runNext(); return; }
+    if (R.task === "tp") {
+      if (kind === "tp-start" && R.phase === "ready") { R.phase = "run"; R.t0 = now(); setStage(`<p class="tp-goal">Идёт отсчёт… Нажмите «Стоп», когда пройдёт <b>${R.list[R.i]} секунд</b></p>`); setControls(`<button class="btn primary big" data-run="tp-stop">Стоп</button>`); return; }
+      if (kind === "tp-stop" && R.phase === "run") { const sec = (now() - R.t0) / 1000; R.rows.push({ target: R.list[R.i], produced: Math.round(sec * 10) / 10 }); R.phase = "fb"; setStage(`<p class="tp-goal">Записано</p>`); setControls(""); later(() => { R.i++; runNext(); }, 800); return; }
+      if (kind === "tp-count" && R.phase === "ask") { R.counted = v === "1"; return runFinish(); }
+    }
+    if (R.task === "load") {
+      const t = R.list[R.i];
+      if (kind === "ld-ans" && R.phase === "ans") { R.ans = v; R.phase = "det"; setControls(`<p class="small">${t.practice && v !== t.target ? `Это была буква ${t.target}. ` : ""}Был ли сбоку маленький серый квадрат?</p><div class="dd-choice"><button class="dd-opt" data-run="ld-det" data-v="1"><b>Да</b></button><button class="dd-opt" data-run="ld-det" data-v="0"><b>Нет</b></button></div>`); return; }
+      if (kind === "ld-det" && R.phase === "det") { R.rows.push({ load: t.load, extra: t.extra, target: t.target, ans: R.ans, saw: v === "1", practice: !!t.practice }); R.phase = "fb"; setControls(""); later(() => { R.i++; runNext(); }, 250); return; }
+    }
+    if (R.task === "navon" && kind === "nv-ans") navonAnswer(v);
+  }
+
+  // если вкладку свернули, таймеры браузера замедляются и время искажается: попытку не засчитываем, задание прерываем
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden || !RUN) return;
+    runClear(); RUN = null; render(); toast("Задание прервано: вкладка была свёрнута. Начните заново, когда будет удобно");
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (!RUN || state.view !== "lab") return;
+    const b = e.target.closest("[data-run]");
+    if (!b) return;
+    if (b.dataset.run === "stage") { if (RUN.task === "rt") { e.preventDefault(); runInput("press"); } return; }
+    e.preventDefault(); runInput(b.dataset.run, b.dataset.v);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (!RUN || state.view !== "lab" || e.repeat) return;
+    const R = RUN, c = e.code;
+    if (R.task === "rt" && (c === "Space" || c === "Enter")) { e.preventDefault(); return runInput("press"); }
+    if ((c === "Enter" || c === "Space") && R.phase === "pause") { e.preventDefault(); return runInput("go"); }
+    if (R.task === "tp" && (c === "Space" || c === "Enter")) { e.preventDefault(); return runInput(R.phase === "ready" ? "tp-start" : "tp-stop"); }
+    if (R.task === "load" && R.phase === "ans" && (c === "KeyX" || c === "KeyN")) { e.preventDefault(); return runInput("ld-ans", c === "KeyX" ? "X" : "N"); }
+    if (R.task === "load" && R.phase === "det" && (c === "KeyY" || c === "KeyD" || c === "ArrowLeft" || c === "Digit1")) { e.preventDefault(); return runInput("ld-det", "1"); }
+    if (R.task === "load" && R.phase === "det" && (c === "KeyN" || c === "ArrowRight" || c === "Digit2")) { e.preventDefault(); return runInput("ld-det", "0"); }
+    if (R.task === "navon" && (c === "ArrowLeft" || c === "KeyY")) { e.preventDefault(); return runInput("nv-ans", "Н"); }
+    if (R.task === "navon" && (c === "ArrowRight" || c === "KeyC")) { e.preventDefault(); return runInput("nv-ans", "С"); }
+  });
+
   function labBlock() {
     if (!ND.lab) return "";
     const PS = ND.lab.probeSummary(state.probe && state.probe.list), D = ND.lab.discount((state.lab || {}).dd || {});
+    const done = Object.keys(TASKS).filter((k) => sumOf(k) && sumOf(k).done);
+    const rest = Object.keys(TASKS).filter((k) => !done.includes(k)).map((k) => `«${TASKS[k].title}»`);
     return `<section class="block lab-block"><h2>Лаборатория <span class="tag">эксперимент</span></h2>
       <p class="muted">Необязательные мини-задания. Они не входят в баллы, критерии и общий вывод: это любопытные наблюдения, а не тесты с нормами.</p>
       ${probeHtml(PS)}
       ${D.complete ? ddHtml(D, false) : `<p class="small">Задание «Сейчас или потом»: 20 выборов между деньгами сегодня и позже, около 2 минут.</p>`}
-      <div class="row no-print"><button class="btn" data-act="lab">${D.complete ? "Подробнее о «Сейчас или потом»" : "Открыть лабораторию"}</button></div></section>`;
+      ${done.map((k) => TASK_HTML[k](sumOf(k), false)).join("")}
+      ${rest.length ? `<p class="small">Ещё задания на 2–3 минуты: ${rest.join(", ")}.</p>` : ""}
+      <div class="row no-print"><button class="btn" data-act="lab">Открыть лабораторию</button></div></section>`;
   }
   function renderLab() {
-    const L = state.lab || { dd: {} }, t = state.sample ? null : ND.lab.nextTrial(L.dd), D = ND.lab.discount(L.dd || {});
-    const total = ND.lab.DELAYS.length * ND.lab.STEPS, made = Object.values(L.dd || {}).reduce((a, x) => a + x.length, 0);
-    const back = `<button class="btn ghost" data-act="lab-back">Назад</button>`;
+    if (RUN) { runClear(); renderRunShell(); runNext(); return; }
+    const L = state.lab || { dd: {} }, task = state.labTask;
+    const home = `<button class="btn ghost" data-act="lab-home">К лаборатории</button>`;
     let body;
-    if (t && !L.started && !made) {
-      body = `<h1>Сейчас или потом</h1>
-        <p>Представьте, что вам предлагают деньги. Можно взять сумму сегодня или 10 000 ₽ позже. Каждый раз выбирайте то, что выбрали бы на самом деле. Правильных ответов нет.</p>
-        <p class="muted small">20 выборов, около 2 минут. Сумма «сегодня» подстраивается под ваши ответы, чтобы найти, сколько для вас стоят деньги через неделю, месяц, полгода и год. Это необязательное задание, в баллы оно не входит.</p>
-        <div class="nav">${back}<button class="btn primary" data-act="lab-start">Начать</button></div>`;
-    } else if (t) {
-      body = `<span class="eyebrow">Выбор ${made + 1} из ${total}</span>
-        <div class="bar"><i style="width:${Math.round((made / total) * 100)}%"></i></div>
-        <h2>Что вы выберете?</h2>
-        <div class="dd-choice">
-          <button class="dd-opt" data-act="lab-c" data-v="now"><b>${rub(t.now)}</b><span>сегодня</span></button>
-          <button class="dd-opt" data-act="lab-c" data-v="later"><b>${rub(ND.lab.LATER)}</b><span>${esc(t.delay.label)}</span></button>
-        </div>
-        <p class="small muted">Представьте, что деньги настоящие и обе выплаты гарантированы.</p>
-        <div class="nav">${back}</div>`;
+    if (task === "dd") {
+      const t = state.sample ? null : ND.lab.nextTrial(L.dd || {}), D = ND.lab.discount(L.dd || {});
+      const total = ND.lab.DELAYS.length * ND.lab.STEPS, made = Object.values(L.dd || {}).reduce((a, x) => a + x.length, 0);
+      if (t && !L.started && !made) {
+        body = `<h1>Сейчас или потом</h1>
+          <p>Представьте, что вам предлагают деньги. Можно взять сумму сегодня или 10 000 ₽ позже. Каждый раз выбирайте то, что выбрали бы на самом деле. Правильных ответов нет.</p>
+          <p class="muted small">20 выборов, около 2 минут. Сумма «сегодня» подстраивается под ваши ответы, чтобы найти, сколько для вас стоят деньги через неделю, месяц, полгода и год. Это необязательное задание, в баллы оно не входит.</p>
+          <div class="nav">${home}<button class="btn primary" data-act="lab-start">Начать</button></div>`;
+      } else if (t) {
+        body = `<span class="eyebrow">Выбор ${made + 1} из ${total}</span>
+          <div class="bar"><i style="width:${Math.round((made / total) * 100)}%"></i></div>
+          <h2>Что вы выберете?</h2>
+          <div class="dd-choice">
+            <button class="dd-opt" data-act="lab-c" data-v="now"><b>${rub(t.now)}</b><span>сегодня</span></button>
+            <button class="dd-opt" data-act="lab-c" data-v="later"><b>${rub(ND.lab.LATER)}</b><span>${esc(t.delay.label)}</span></button>
+          </div>
+          <p class="small muted">Представьте, что деньги настоящие и обе выплаты гарантированы.</p>
+          <div class="nav">${home}</div>`;
+      } else {
+        body = `<h1>Сейчас или потом</h1>${D.complete ? ddHtml(D, true) : `<p class="muted">В примере отчёта задание пройти нельзя. Начните анкету, чтобы пройти его самому.</p>`}
+          <div class="nav">${home}${state.sample ? "" : `<button class="btn" data-act="lab-reset">Пройти заново</button>`}</div>`;
+      }
+    } else if (TASKS[task]) {
+      const T = TASKS[task], S = sumOf(task);
+      if (S && S.done) {
+        body = `<h1>${esc(T.title)}</h1>${TASK_HTML[task](S, true).replace(/^<h3>[^<]*<\/h3>/, "")}
+          <div class="nav">${home}${state.sample ? "" : `<button class="btn" data-act="lab-run" data-t="${task}">Пройти заново</button>`}</div>`;
+      } else {
+        body = `<h1>${esc(T.title)}</h1><p>${esc(T.what)}</p>
+          <ul class="small">${T.how.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>
+          <p class="small muted">${T.time}. Необязательное задание, в баллы и вывод оно не входит. Прервать можно в любой момент.</p>
+          <div class="nav">${home}${state.sample ? `<span class="small muted">В примере отчёта задания пройти нельзя.</span>` : `<button class="btn primary" data-act="lab-run" data-t="${task}">Начать</button>`}</div>`;
+      }
     } else {
+      const D = ND.lab.discount(L.dd || {});
+      const card = (k, title, what, time, done) => `<li class="lab-task"><div><b>${esc(title)}</b> <span class="small muted">· ${time}</span><p class="small">${esc(what)}</p></div>
+        <button class="btn ${done ? "" : "primary"}" data-act="lab-open" data-t="${k}">${done ? "Результат" : "Пройти"}</button></li>`;
       body = `<h1>Лаборатория</h1>
-        ${D.complete ? ddHtml(D, true) : `<p class="muted">В примере отчёта задание пройти нельзя. Начните анкету, чтобы пройти его самому.</p>`}
+        <p class="muted">Короткие задания в браузере. Они не входят в баллы, критерии и вывод: это наблюдения о вашем стиле, а не тесты с нормами. Лучше проходить на компьютере, когда вы не очень устали.</p>
+        <ul class="lab-tasks">
+          ${card("dd", "Сейчас или потом", "20 выборов между деньгами сегодня и позже.", "около 2 минут", D.complete)}
+          ${Object.entries(TASKS).map(([k, T]) => card(k, T.title, T.what, T.time, sumOf(k).done)).join("")}
+        </ul>
         ${probeHtml(ND.lab.probeSummary(state.probe && state.probe.list))}
-        <div class="nav">${back}${state.sample ? "" : `<button class="btn" data-act="lab-reset">Пройти «Сейчас или потом» заново</button>`}</div>`;
+        <div class="nav"><button class="btn ghost" data-act="lab-back">Назад</button></div>`;
     }
     app.innerHTML = `<div class="wrap"><div class="card lab">${pix("strengths", "pix-q")}${body}</div></div>`;
   }
@@ -1054,7 +1323,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         { const first = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = first === -1 ? 0 : first; }
         shownAt = Date.now(); save(); render(); return;
       case "resume": state.view = "q"; if (!open(ITEMS[state.idx])) state.idx = Math.max(0, nextOpen(state.idx, -1)); shownAt = Date.now(); save(); render(); return;
-      case "sample": { const L = ND.sampleLab(), look = state.look, anim = state.anim; state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [], probe: { seed: 1, list: L.probes }, lab: { dd: L.dd }, look, anim }; render(); window.scrollTo(0, 0); return; }
+      case "sample": { const L = ND.sampleLab(), look = state.look, anim = state.anim; state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [], probe: { seed: 1, list: L.probes }, lab: { dd: L.dd, rt: L.rt, tp: L.tp, load: L.load, navon: L.navon }, look, anim }; render(); window.scrollTo(0, 0); return; }
       case "practice": if (state.sample) state = load() || fresh(); state.view = "practice"; state.seen = state.seen || {}; state.breaks = state.breaks || []; save(); render(); window.scrollTo(0, 0); return;
       case "practice-skip": case "practice-done": {
         state.seen.practice = true; delete state.prR;
@@ -1095,7 +1364,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       case "probe-done": finishProbe(state.probeCur || { a: "skip" }); return;
       case "probe-skip": finishProbe({ a: "skip" }); return;
       case "probe-off": state.probesOff = true; finishProbe({ a: "skip" }); toast("Больше не спросим"); return;
-      case "lab": state.labBack = state.view === "lab" ? state.labBack : state.view; state.view = "lab"; if (!state.sample) save(); render(); window.scrollTo(0, 0); return;
+      case "lab": state.labBack = state.view === "lab" ? state.labBack : state.view; state.view = "lab"; state.labTask = null; if (!state.sample) save(); render(); window.scrollTo(0, 0); return;
       case "lab-start": (state.lab = state.lab || { dd: {} }).started = true; save(); render(); return;
       case "lab-c": {
         if (state.sample) return;
@@ -1104,8 +1373,12 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         (L.dd[t.delay.key] = L.dd[t.delay.key] || []).push(b.dataset.v === "now" ? "now" : "later");
         save(); render(); return;
       }
-      case "lab-reset": if (state.sample) return; state.lab = { dd: {}, started: true }; save(); render(); return;
-      case "lab-back": state.view = state.labBack && state.labBack !== "lab" ? state.labBack : "report"; save(); render(); window.scrollTo(0, 0); return;
+      case "lab-reset": if (state.sample) return; state.lab = { ...(state.lab || {}), dd: {}, started: true }; save(); render(); return;
+      case "lab-home": runClear(); RUN = null; state.labTask = null; save(); render(); window.scrollTo(0, 0); return;
+      case "lab-open": state.labTask = b.dataset.t; save(); render(); window.scrollTo(0, 0); return;
+      case "lab-run": if (state.sample || !TASKS[b.dataset.t]) return; state.labTask = b.dataset.t; runStart(b.dataset.t); window.scrollTo(0, 0); return;
+      case "lab-stop": runClear(); RUN = null; render(); window.scrollTo(0, 0); return;
+      case "lab-back": runClear(); RUN = null; state.labTask = null; state.view = state.labBack && state.labBack !== "lab" ? state.labBack : "report"; save(); render(); window.scrollTo(0, 0); return;
       case "sprite": state.spriteBack = state.view === "sprite" ? state.spriteBack : state.view; state.view = "sprite"; if (!state.sample) save(); render(); window.scrollTo(0, 0); return;
       case "sp": {
         const k = b.dataset.k, L = (state.sprite = { ...ND.sprite.DEFAULT, ...(state.sprite || {}) });
@@ -1153,7 +1426,11 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       case "export": {
         const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R),
           comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })),
-          lab: { note: "экспериментально, в баллы и критерии не входит", probes: labState().probes || [], probeSummary: ND.lab.probeSummary(labState().probes), discount: ND.lab.discount(labState().dd || {}) } }, null, 2);
+          lab: { note: "экспериментально, в баллы и критерии не входит", probes: labState().probes || [], probeSummary: ND.lab.probeSummary(labState().probes), discount: ND.lab.discount(labState().dd || {}),
+            reactionTime: { raw: labState().rt || [], summary: ND.lab.rtSummary(labState().rt) },
+            timeProduction: { raw: labState().tp || [], countedInHead: !!labState().tpCounted, summary: ND.lab.tpSummary(labState().tp) },
+            perceptualLoad: { raw: labState().load || [], summary: ND.lab.loadSummary(labState().load) },
+            navon: { raw: labState().navon || [], summary: ND.lab.navonSummary(labState().navon) } } }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));

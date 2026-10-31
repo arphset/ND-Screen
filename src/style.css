@@ -322,6 +322,29 @@ table.week td:first-child { width: 3em; }
 .dd-chart .curve { fill: none; stroke: var(--accent); stroke-width: 2.5; }
 .dd-chart circle { fill: var(--accent); }
 .lab-block h3 { margin: 12px 0 4px; }
+.lab-tasks { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.lab-task { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); }
+.lab-task p { margin: 4px 0 0; }
+@media (max-width: 520px) { .lab-task { flex-direction: column; align-items: stretch; } }
+.lab-stage { position: relative; min-height: 300px; display: grid; place-items: center; text-align: center; border-radius: var(--r); background: color-mix(in srgb, var(--ink) 7%, var(--surface)); user-select: none; -webkit-user-select: none; touch-action: manipulation; overflow: hidden; padding: 16px; }
+.lab-stage.t-rt { cursor: pointer; }
+.lab-stage .fix { font: 600 2rem var(--font-body); color: var(--muted); }
+.rt-dot { width: 72px; height: 72px; border-radius: 50%; background: var(--accent); }
+.rt-fb { font: 600 1.4rem var(--font-display); }
+.tp-goal { font-size: 1.25rem; margin: 0; max-width: 32ch; }
+.lab-ctl { display: grid; gap: 8px; justify-items: center; min-height: 64px; }
+.lab-ctl .dd-choice { width: 100%; max-width: 360px; }
+.btn.big { padding: 18px 48px; font-size: 1.15rem; }
+.ld-l { position: absolute; transform: translate(-50%, -50%); font: 600 22px var(--font-mono, monospace); color: var(--ink); }
+.ld-sq { position: absolute; top: 50%; width: 10px; height: 10px; background: var(--muted); transform: translateY(-50%); }
+.ld-sq.left { left: max(4%, calc(50% - 170px)); } .ld-sq.right { right: max(4%, calc(50% - 170px)); }
+.navon { display: grid; gap: 6px; font: 600 16px var(--font-mono, monospace); line-height: 1; }
+.navon div { display: grid; grid-template-columns: repeat(5, 26px); gap: 6px; }
+.navon span { height: 26px; display: grid; place-items: center; }
+.rt-spark { width: 100%; max-width: 420px; height: auto; display: block; }
+.rt-spark .axis { stroke: var(--line); }
+.rt-spark .curve { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+.rt-spark text { font: 12px var(--font-body); fill: var(--muted); }
 
 .sprite-stage { justify-self: center; padding: 12px; border-radius: var(--r); background: var(--accent-soft); }
 .sprite-stage canvas { display: block; width: 256px; height: 256px; max-width: 100%; image-rendering: pixelated; }
