@@ -23,6 +23,7 @@ for (const it of ITEMS) {
   if (it.kind === "scale") { check(`${it.id}: шкала`, !!ND.SCALES[it.scale] && !it.c && !it.s && !it.src); continue; }
   if (it.kind === "comorb") { check(`${it.id}: сопутствующее состояние с данными и источником`, !it.c && !it.s && !it.src && it.co.length > 0 && it.co.every((c) => /\(.*\d{4}/.test(c.t)) && ["strong", "moderate", "weak"].includes(it.conf)); continue; }
   if (it.kind === "hist") { check(`${it.id}: вопрос о раннем развитии без связи с подсчётом`, !it.c && !it.s && !it.src && it.opts.length >= 2 && (it.flags || []).every((f) => f.on.every((i) => i < it.opts.length) && /\d{4}|DSM/.test(f.note))); continue; }
+  if (it.kind === "trait") { check(`${it.id}: черта вне DSM без связи с подсчётом`, !it.c && !it.s && !it.src && (!!ND.TRAITS[it.tr] || it.tr === "inertiaDep")); continue; }
   if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
@@ -422,7 +423,7 @@ for (let k = 0; k < 300; k++) {
 // ── Сопутствующие состояния ──
 {
   const co = ITEMS.filter((x) => x.kind === "comorb");
-  check("сопутствующих состояний 14", co.length === 14);
+  check("сопутствующих состояний 17", co.length === 17);
   let same = 0, tot = 0;
   for (let k = 0; k < 80; k++) {
     const R = profile(() => Math.floor(rnd() * 5));
@@ -643,6 +644,27 @@ check("нет пояснений к несуществующим вопроса�
   const C = ND.clinician.build(S, SL);
   check("задания попадают в отчёт специалиста внутри раздела лаборатории", /Простая реакция/.test(C.text) && /Отмеривание интервалов/.test(C.text) && /Перцептивная нагрузка/.test(C.text) && /Фигуры Навона/.test(C.text) && C.text.replace(/ЛАБОРАТОРИЯ[\s\S]*?\n\n/, "") === ND.clinician.build(S).text);
   check("задания не меняют evaluate", JSON.stringify(ND.scoring.evaluate(S)) === E1);
+}
+
+// ── v0.12: ACI, черты вне DSM, новые сопутствующие ──
+{
+  const aci = ITEMS.filter((x) => x.scale === "ACI");
+  check("ACI: 10 пунктов в своём разделе", aci.length === 10 && aci.every((x) => x.sec === "cds"));
+  const R = {}; aci.forEach((x, i) => (R[x.id] = { now: { I: i < 5 ? 3 : 1 } }));
+  check("ACI: балл — среднее 0–3", ND.scoring.scales(R).ACI.score === 2);
+  delete R["ACI-1"]; delete R["ACI-2"]; check("ACI: два пропуска допустимы", ND.scoring.scales(R).ACI.score != null);
+  delete R["ACI-3"]; check("ACI: три пропуска — балла нет", ND.scoring.scales(R).ACI.score == null);
+  check("ACI не даёт дифференциальных флагов", !ND.scoring.evaluate(Object.fromEntries(aci.map((x) => [x.id, { now: { I: 3 } }]))).differential.some((d) => d.scale === "ACI"));
+  const t6 = ITEMS.find((x) => x.id === "TR-6"), phq = (v) => Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`PHQ-${i + 1}`, { now: { I: v } }]));
+  check("TR-6 закрыт без инерции", !ND.eligible(t6, { ...phq(3) }));
+  check("TR-6 закрыт при низком PHQ-9", !ND.eligible(t6, { ...phq(0), "TR-1": { now: { I: 2 } } }));
+  check("TR-6 открыт при инерции и PHQ-9 ≥ 10", ND.eligible(t6, { ...phq(2), "TR-1": { now: { I: 1 } } }));
+  check("черты: у каждой есть уровень доказательности и ссылка на карту", Object.values(ND.TRAITS).every((T) => ["strong", "moderate", "weak", "contested"].includes(T.ev) && T.map && T.known && /\d{4}/.test(T.known)));
+  // новые вопросы не меняют подсчёт РАС и СДВГ
+  const S = ND.sampleResponses(), base = JSON.stringify({ ...ND.scoring.evaluate(S), scales: null });
+  const S2 = JSON.parse(JSON.stringify(S));
+  for (const it of ITEMS.filter((x) => x.kind === "trait" || x.scale === "ACI" || ["CO-15", "CO-16", "CO-17"].includes(x.id))) S2[it.id] = { now: { I: 2 } };
+  check("ACI, черты и новые сопутствующие не меняют подсчёт", JSON.stringify({ ...ND.scoring.evaluate(S2), scales: null }) === base);
 }
 
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);

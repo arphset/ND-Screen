@@ -211,6 +211,15 @@ ND.clinician = (function () {
     if (A && A.gate === 1) extra.push(["ABSI (аутистическое выгорание): со слов, выгорания не было", []]);
     else if (A && A.score != null) extra.push([`ABSI (аутистическое выгорание, Arnold 2023, неофициальный перевод): среднее ${f1(A.score)} из 7, выше — тяжелее; порогов нет`,
       Object.values(A.subs).map((x) => `${x.label}: ${x.score == null ? "—" : f1(x.score)}`)]);
+    const AC = E.scales.ACI;
+    if (AC && AC.score != null) extra.push([`ACI (вялый когнитивный темп, Becker 2018, неофициальный перевод): среднее ${AC.score.toFixed(2).replace(".", ",")} из 3; порогов нет, общая выборка взрослых США ${f1(AC.ref)} ± ${f1(AC.refSd)} (Fredrick 2021)`, []]);
+    const TRL = { 0: "нет", 1: "отчасти", 2: "да" };
+    const tr = ND.ITEMS.filter((it) => it.kind === "trait" && !it.opts && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I >= 1);
+    if (tr.length) {
+      const dep = R["TR-6"], depI = dep && dep.now && ND.eligible(ND.ITEMS.find((x) => x.id === "TR-6"), R) ? dep.now.I : null;
+      const DEP = ["хочется, но не получается начать", "ничего не хочется", "по-разному", "не знает"];
+      extra.push(["Черты вне DSM (самоотчёт, в подсчёт не входят)", tr.map((it) => `${ND.TRAITS[it.tr].label}: ${TRL[Math.min(2, R[it.id].now.I)]}`).concat(depI != null ? [`Инерция при PHQ-9 ≥ 10: ${DEP[Math.min(3, depI)]}`] : [])]);
+    }
     if (extra.length || co.length) {
       h.push(`<section class="block"><h2>Дополнительные шкалы и сопутствующие состояния</h2>
         ${extra.map(([t, l]) => `<p><b>${esc(t)}</b></p>${l.length ? `<ul class="small stack">${l.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`).join("")}

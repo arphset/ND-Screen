@@ -355,3 +355,5 @@ table.week td:first-child { width: 3em; }
 .sprite-mini { width: 96px; height: 96px; image-rendering: pixelated; flex: none; border-radius: var(--r); background: var(--accent-soft); }
 .linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; font: inherit; cursor: pointer; }
 @media print { .pix-thumb, .map, .sprite-mini { display: none; } }
+.ev-tag { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap; background: var(--accent-soft); color: var(--accent); }
+.ev-tag.ev-weak, .ev-tag.ev-contested { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--ink); }

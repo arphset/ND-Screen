@@ -54,7 +54,7 @@
     if (isHist(it)) return Array.isArray(r.h) ? r.h.length > 0 : r.h != null;
     const f = it.kind === "func" ? "D" : "I";
     const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
-    if (it.kind === "scale" || it.kind === "comorb") return !!(r.now && r.now.I != null);
+    if (it.kind === "scale" || it.kind === "comorb" || it.kind === "trait") return !!(r.now && r.now.I != null);
     return ok(r.now) && (it.noChild || ok(r.child));
   }
 
@@ -126,6 +126,7 @@
     GAD7: { legend: "Как часто за последние 2 недели вас беспокоило это?", opts: SCALE_OPTS, cls: "four" },
     PAQ: { legend: "Насколько вы согласны, что это верно для вас?", opts: AGREE7, cls: "seven" },
     ABSI: { legend: "Во время последнего (или нынешнего) аутистического выгорания…", opts: AGREE7, cls: "seven" },
+    ACI: { legend: "Насколько это про вас за последние 6 месяцев?", opts: ["Совсем нет", "Иногда", "Часто", "Очень часто"], cls: "four" },
   };
   function scaleBlock(it, r) {
     const pr = r.now || {}, ui = SCALE_UI[it.scale];
@@ -137,6 +138,9 @@
   // Сопутствующее состояние: только «да / нет», без периодов и дополнительных полей
   const YESNO = ["Да", "Нет"];
   const comorbQ = (r) => `<fieldset class="period"><legend>Есть ли это у вас сейчас или было раньше?</legend>${scaleBtns("now", (r.now || {}).I, YESNO, "I", "two")}</fieldset>`;
+  // Черта вне DSM: «нет / отчасти / да», у уточняющего вопроса свои варианты
+  const TRAIT_OPTS = ["Нет, не про меня", "Отчасти", "Да, это про меня"];
+  const traitQ = (it, r) => `<fieldset class="period"><legend>${it.opts ? "Ваш ответ" : "Насколько это про вас сейчас?"}</legend>${scaleBtns("now", (r.now || {}).I, it.opts || TRAIT_OPTS, "I", it.opts ? "two" : "three")}</fieldset>`;
   // Показывается при любом ответе, кроме «ни разу», на 9-й пункт PHQ-9
   function safetyBlock() {
     return `<div class="safety" role="note"><b>Если вам сейчас тяжело, вы не одни</b>
@@ -209,7 +213,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
           ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
           ${isHist(it) && it === ITEMS.find(isHist) ? `<p class="small muted">Несколько вопросов о раннем детстве и семье. Это факты для врача: на баллы, критерии и индексы они не влияют. Если не знаете ответа, можно спросить родных или выбрать «Не знаю».</p>` : ""}
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : isHist(it) ? histBlock(it, r) : periodBlock(it, r, "now") + (it.noChild ? "" : periodBlock(it, r, "child")) + extrasBlock(it, r))}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : it.kind === "trait" ? traitQ(it, r) : isHist(it) ? histBlock(it, r) : periodBlock(it, r, "now") + (it.noChild ? "" : periodBlock(it, r, "child")) + extrasBlock(it, r))}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -224,7 +228,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
 
   // ───────── пиксельные картинки (src/pixels.js) ─────────
   const SEC_PIX = { social: "social", imag: "imag", routine: "routine", sensory: "sensory", camo: "camo", attention: "attention", activity: "activity",
-    exec: "exec", life: "life", history: "history", mood: "mood", emo: "emo", burnout: "burnout", wellbeing: "wellbeing", health: "health", strengths: "strengths" };
+    exec: "exec", life: "life", history: "history", mood: "mood", emo: "emo", burnout: "burnout", cds: "attention", traits: "exec", wellbeing: "wellbeing", health: "health", strengths: "strengths" };
   // Н14: тема картинок; Н22: поверх базовой картинки слой-анимация (полоса из 4 кадров, меняются только движущиеся пиксели)
   const LOOKS = [["default", "Обычное"], ["space", "Космос"], ["trains", "Поезда"], ["ocean", "Океан"]];
   const lookOf = () => (ND.PIXELS && ND.PIXELS[state.look] ? state.look : "default");
@@ -961,6 +965,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
 
         ${scalesBlock(E.scales)}
 
+        ${traitsBlock(state.R)}
+
         ${comorbBlock(E)}
 
         ${historyBlock(ND.insights.history(state.R))}
@@ -1078,7 +1084,43 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const mood = !keys.length ? "" : `<section class="block"><h2>Настроение и тревога</h2>
       <div class="tbl-wrap"><table><thead><tr><th>Шкала</th><th>Балл</th><th>Степень</th><th>Затруднения в жизни</th></tr></thead><tbody>${keys.map((k) => row(SC[k])).join("")}</tbody></table></div>
       <p class="small muted">PHQ-9 (Kroenke et al., 2001) и GAD-7 (Spitzer et al., 2006) — проверенные короткие шкалы за последние 2 недели. Степень: 0–4 минимальная, 5–9 лёгкая, 10–14 умеренная, дальше выше. От 10 баллов стоит обсудить результат со специалистом. Это скрининг, а не диагноз. На оценку РАС и СДВГ шкалы не влияют, но тревога и депрессия могут давать похожие трудности со вниманием и общением, поэтому их важно учитывать.</p></section>`;
-    return mood + paqBlock(SC.PAQ) + absiBlock(SC.ABSI);
+    return mood + paqBlock(SC.PAQ) + absiBlock(SC.ABSI) + aciBlock(SC.ACI);
+  }
+  function aciBlock(x) {
+    if (!x || !x.answered) return "";
+    const f = (v) => v.toFixed(2).replace(".", ","), z = x.score == null ? null : (x.score - x.ref) / x.refSd;
+    const where = z == null ? "" : z >= 2 ? "намного выше, чем в среднем у взрослых в этом исследовании (на 2 стандартных отклонения и больше)" : z >= 1 ? "выше, чем в среднем у взрослых в этом исследовании (на 1–2 стандартных отклонения)" : "в пределах обычного для взрослых в этом исследовании";
+    return `<section class="block"><h2>Мечтательность и «туман» в голове</h2>
+      <p>${x.score == null ? `Отвечено ${x.answered} из ${x.n}, для балла нужно не меньше ${x.n - x.maxMiss}.` : `ACI: средний балл <b>${f(x.score)} из 3</b>. Для сравнения: у взрослых из общей выборки в США в среднем ${f(x.ref)} (стандартное отклонение ${f(x.refSd)}), у вас ${where}.`}</p>
+      <p class="small muted">Это 10 вопросов о «вялом когнитивном темпе», который сейчас всё чаще называют синдромом когнитивного отключения: мечтательность, «туман», медленные мысли, «зависания». В метаанализе (Becker et al., 2016, больше 19 тысяч человек) эти черты устойчиво выделялись в отдельную группу, а не в симптомы СДВГ, хотя часто встречаются вместе с невнимательным типом. Шкала: Adult Concentration Inventory (Becker et al., 2018), структура подтверждена у взрослых (Fredrick et al., 2021). Порогов у шкалы нет, диагнозом это состояние не является. Вялый темп связан и с депрессией, поэтому смотрите вместе с PHQ-9. Русской версии нет, перевод наш и неофициальный. На оценку РАС и СДВГ шкала не влияет.</p></section>`;
+  }
+  // Черты вне DSM: какие отмечены и что о них известно, со значком доказательности из базы знаний
+  const EV_LABEL = { strong: "сильные данные", moderate: "умеренные данные", weak: "мало данных", contested: "спорно" };
+  function traitsList(R) {
+    const out = [];
+    for (const [key, T] of Object.entries(ND.TRAITS)) {
+      if (T.from) {
+        const hit = T.from.some((id) => R[id] && !R[id].na && R[id].now && R[id].now.I >= 3);
+        if (hit) out.push({ key, T, lvl: 2, derived: true });
+        continue;
+      }
+      const it = ITEMS.find((x) => x.kind === "trait" && x.tr === key), r = it && R[it.id];
+      if (r && !r.na && r.now && r.now.I >= 1) out.push({ key, T, lvl: r.now.I });
+    }
+    return out;
+  }
+  function traitsBlock(R) {
+    const L = traitsList(R), dep = R["TR-6"], depI = dep && dep.now && dep.now.I != null && ND.eligible(ITEMS.find((x) => x.id === "TR-6"), R) ? Math.min(3, dep.now.I) : null;
+    const asked = ITEMS.some((x) => x.kind === "trait" && R[x.id] && R[x.id].now && R[x.id].now.I != null);
+    if (!asked && !L.length) return "";
+    const depTxt = depI == null || depI === 3 ? "" : depI === 0 ? "Вы описали это как «хочется, но не получается начать»: это больше похоже на инерцию, чем на потерю желания при депрессии. Но при сниженном настроении стоит обсудить и то, и другое со специалистом." : depI === 1 ? "Вы описали это как «ничего не хочется»: так чаще проявляется сниженное настроение, а не инерция. По PHQ-9 оно сейчас заметно, это стоит обсудить со специалистом." : "Бывает и так, и так: возможно, есть и инерция, и сниженное настроение. Стоит обсудить со специалистом.";
+    return `<section class="block"><h2>Черты, о которых часто говорят</h2>
+      <p class="muted">Этих черт нет в критериях DSM-5-TR, но многие узнают их в себе по описаниям в сети. Рядом с каждой указано, насколько она изучена. В баллы и вывод они не входят.</p>
+      ${L.length ? `<ul class="sup">${L.map(({ key, T, lvl, derived }) => `<li><div class="row" style="justify-content:space-between"><b>${esc(T.label)}</b><span class="ev-tag ev-${T.ev}">${EV_LABEL[T.ev]}</span></div>
+        <span class="small">${derived ? "" : lvl >= 2 ? "Вы отметили: «да, это про меня». " : "Вы отметили: «отчасти». "}${esc(T.what)}</span>
+        <span class="small muted">${esc(T.known)}</span>
+        <span class="small"><b>Что может помочь:</b> ${esc(T.help)} <a href="https://neurodivergentmap.vercel.app/#${T.map}" target="_blank" rel="noopener">Подробнее на карте</a></span>
+        ${key === "inertia" && depTxt ? `<span class="small"><b>Инерция или настроение?</b> ${depTxt}</span>` : ""}</li>`).join("")}</ul>` : `<p class="small muted">Ни одну из этих черт вы у себя не отметили.</p>`}</section>`;
   }
   const subRows = (x, fmt) => Object.values(x.subs).map((s) => `<tr><td>${esc(s.label)}</td><td class="mono">${s.score == null ? "—" : fmt(s)}</td>${s.bands ? `<td>${s.band || "—"}</td>` : ""}</tr>`).join("");
   function paqBlock(x) {
@@ -1425,6 +1467,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       }
       case "export": {
         const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R),
+          traits: traitsList(state.R).map((x) => ({ key: x.key, label: x.T.label, level: x.lvl, evidence: x.T.ev, fromItems: !!x.derived })),
           comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })),
           lab: { note: "экспериментально, в баллы и критерии не входит", probes: labState().probes || [], probeSummary: ND.lab.probeSummary(labState().probes), discount: ND.lab.discount(labState().dd || {}),
             reactionTime: { raw: labState().rt || [], summary: ND.lab.rtSummary(labState().rt) },
