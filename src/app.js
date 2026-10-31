@@ -475,7 +475,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   const sumOf = (task, L) => {
     L = L || state.lab || {};
     if (task === "rt") return ND.lab.rtSummary(L.rt);
-    if (task === "tp") return ND.lab.tpSummary(L.tp);
+    if (task === "tp") return { ...ND.lab.tpSummary(L.tp), counted: !!L.tpCounted };
     if (task === "load") return ND.lab.loadSummary(L.load);
     if (task === "navon") return ND.lab.navonSummary(L.navon);
     return null;
@@ -535,6 +535,18 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       ${full ? `<p class="small muted">Задание на основе фигур Навона (Navon, 1977). В метаанализе 56 исследований у аутичных людей не нашли ни общего преимущества в деталях, ни «неспособности видеть целое», но целое в среднем замечалось немного позже (van der Hallen et al., 2015). Поэтому результат описывает стиль, а не дефицит. Норм нет, попыток немного. Подробнее: ${MAPLINK("detail_focus", "«Внимание к деталям» на карте")}.</p>` : ""}`;
   }
   const TASK_HTML = { rt: rtHtml, tp: tpHtml, load: loadHtml, navon: navonHtml };
+  // Блок «Вывод»: итог задания, что это значит, связь с исследованиями и что может помочь
+  function verdictHtml(v, full) {
+    if (!v) return "";
+    return `<div class="verdict t-${v.tone}"><span class="eyebrow">Вывод</span><b class="v-title">${esc(v.title)}</b><p>${esc(v.means)}</p>
+      ${full && v.link ? `<p class="small">${esc(v.link)}</p>` : ""}
+      ${full && v.tips.length ? `<p class="small"><b>Что может помочь:</b></p><ul class="small">${v.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+      ${full ? `<p class="small muted">Норм для этого задания нет. Границы между уровнями — наш ориентир для чтения результата, а не клиническая норма, и по одному прохождению диагноз не ставится.</p>` : ""}</div>`;
+  }
+  const withVerdict = (html, v, full) => (html && v ? html.replace("</h3>", "</h3>" + verdictHtml(v, full)) : html);
+  const taskHtml = (k, S, full) => withVerdict(TASK_HTML[k](S, full), S && S.done ? ND.lab.verdict(k, S) : null, full);
+  const ddFull = (D, full) => withVerdict(ddHtml(D, full), ND.lab.verdict("dd", D), full);
+  const probeFull = (PS, full) => withVerdict(probeHtml(PS), ND.lab.verdict("probe", PS), full);
 
   // Прохождение заданий: состояние в RUN, экран обновляется точечно, чтобы не сбивать время.
   let RUN = null;
@@ -698,9 +710,9 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const rest = Object.keys(TASKS).filter((k) => !done.includes(k)).map((k) => `«${TASKS[k].title}»`);
     return `<section class="block lab-block"><h2>Лаборатория <span class="tag">эксперимент</span></h2>
       <p class="muted">Необязательные мини-задания. Они не входят в баллы, критерии и общий вывод: это любопытные наблюдения, а не тесты с нормами.</p>
-      ${probeHtml(PS)}
-      ${D.complete ? ddHtml(D, false) : `<p class="small">Задание «Сейчас или потом»: 20 выборов между деньгами сегодня и позже, около 2 минут.</p>`}
-      ${done.map((k) => TASK_HTML[k](sumOf(k), false)).join("")}
+      ${probeFull(PS, false)}
+      ${D.complete ? ddFull(D, false) : `<p class="small">Задание «Сейчас или потом»: 20 выборов между деньгами сегодня и позже, около 2 минут.</p>`}
+      ${done.map((k) => taskHtml(k, sumOf(k), false)).join("")}
       ${rest.length ? `<p class="small">Ещё задания на 2–3 минуты: ${rest.join(", ")}.</p>` : ""}
       <div class="row no-print"><button class="btn" data-act="lab">Открыть лабораторию</button></div></section>`;
   }
@@ -728,13 +740,13 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           <p class="small muted">Представьте, что деньги настоящие и обе выплаты гарантированы.</p>
           <div class="nav">${home}</div>`;
       } else {
-        body = `<h1>Сейчас или потом</h1>${D.complete ? ddHtml(D, true) : `<p class="muted">В примере отчёта задание пройти нельзя. Начните анкету, чтобы пройти его самому.</p>`}
+        body = `<h1>Сейчас или потом</h1>${D.complete ? ddFull(D, true).replace(/^\s*<h3>[^<]*<\/h3>/, "") : `<p class="muted">В примере отчёта задание пройти нельзя. Начните анкету, чтобы пройти его самому.</p>`}
           <div class="nav">${home}${state.sample ? "" : `<button class="btn" data-act="lab-reset">Пройти заново</button>`}</div>`;
       }
     } else if (TASKS[task]) {
       const T = TASKS[task], S = sumOf(task);
       if (S && S.done) {
-        body = `<h1>${esc(T.title)}</h1>${TASK_HTML[task](S, true).replace(/^<h3>[^<]*<\/h3>/, "")}
+        body = `<h1>${esc(T.title)}</h1>${taskHtml(task, S, true).replace(/^<h3>[^<]*<\/h3>/, "")}
           <div class="nav">${home}${state.sample ? "" : `<button class="btn" data-act="lab-run" data-t="${task}">Пройти заново</button>`}</div>`;
       } else {
         body = `<h1>${esc(T.title)}</h1><p>${esc(T.what)}</p>
@@ -744,7 +756,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       }
     } else {
       const D = ND.lab.discount(L.dd || {});
-      const card = (k, title, what, time, done) => `<li class="lab-task"><div><b>${esc(title)}</b> <span class="small muted">· ${time}</span><p class="small">${esc(what)}</p></div>
+      const vOf = (k) => (k === "dd" ? ND.lab.verdict("dd", D) : sumOf(k) && sumOf(k).done ? ND.lab.verdict(k, sumOf(k)) : null);
+      const card = (k, title, what, time, done) => `<li class="lab-task"><div><b>${esc(title)}</b> <span class="small muted">· ${time}</span><p class="small">${esc(what)}</p>${done && vOf(k) ? `<p class="small v-line t-${vOf(k).tone}">Вывод: <b>${esc(vOf(k).title)}</b></p>` : ""}</div>
         <button class="btn ${done ? "" : "primary"}" data-act="lab-open" data-t="${k}">${done ? "Результат" : "Пройти"}</button></li>`;
       body = `<h1>Лаборатория</h1>
         <p class="muted">Короткие задания в браузере. Они не входят в баллы, критерии и вывод: это наблюдения о вашем стиле, а не тесты с нормами. Лучше проходить на компьютере, когда вы не очень устали.</p>
@@ -752,7 +765,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${card("dd", "Сейчас или потом", "20 выборов между деньгами сегодня и позже.", "около 2 минут", D.complete)}
           ${Object.entries(TASKS).map(([k, T]) => card(k, T.title, T.what, T.time, sumOf(k).done)).join("")}
         </ul>
-        ${probeHtml(ND.lab.probeSummary(state.probe && state.probe.list))}
+        ${probeFull(ND.lab.probeSummary(state.probe && state.probe.list), true)}
         <div class="nav"><button class="btn ghost" data-act="lab-back">Назад</button></div>`;
     }
     app.innerHTML = `<div class="wrap"><div class="card lab">${pix("strengths", "pix-q")}${body}</div></div>`;

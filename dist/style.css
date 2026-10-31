@@ -357,3 +357,12 @@ table.week td:first-child { width: 3em; }
 @media print { .pix-thumb, .map, .sprite-mini { display: none; } }
 .ev-tag { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; white-space: nowrap; background: var(--accent-soft); color: var(--accent); }
 .ev-tag.ev-weak, .ev-tag.ev-contested { background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--ink); }
+.verdict { display: grid; gap: 4px; margin: 10px 0 14px; padding: 12px 14px; border-radius: var(--r); border-left: 4px solid var(--accent); background: var(--accent-soft); }
+.verdict p, .verdict ul { margin: 0; }
+.verdict ul { padding-left: 1.2em; }
+.verdict .v-title { font-family: var(--font-display); font-size: 1.15rem; }
+.verdict.t-ok { border-left-color: #3f9d6b; }
+.verdict.t-mid { border-left-color: #d29a2a; }
+.verdict.t-high { border-left-color: #d0643c; }
+.verdict.t-na { border-left-color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
+.v-line { margin-top: 4px !important; }
