@@ -26,16 +26,20 @@
   for (const id of ND.NO_CHILD) if (state.R[id]) delete state.R[id].child;
   // и частота у устойчивых черт: она больше не спрашивается и не учитывается
   for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (state.R[id] && state.R[id][p]) delete state.R[id][p].F;
+  state.seen = state.seen || {}; state.breaks = state.breaks || [];
+  // экраны «пример вопроса» и «машина времени» не могут быть сохранены как текущие: после перезагрузки начинаем с вопроса
+  if (state.view === "practice" || state.view === "recall" || state.view === "brk") state.view = "q";
   let shownAt = Date.now();
   let confirmReset = false;
 
-  function fresh() { return { R: {}, idx: 0, view: "intro", sample: false }; }
+  function fresh() { return { R: {}, idx: 0, view: "intro", sample: false, seen: {}, breaks: [] }; }
   function load() { try { const s = localStorage.getItem(KEY); return s ? JSON.parse(s) : null; } catch (e) { return null; } }
   function save() { if (state.sample) return; try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   const ITEMS = ND.ITEMS;
-  const resp = (id) => (state.R[id] = state.R[id] || (ND.NO_CHILD.has(id) ? { now: {} } : { now: {}, child: {} }));
+  const isHist = (it) => it.kind === "hist";
+  const resp = (id) => (state.R[id] = state.R[id] || (ND.NO_CHILD.has(id) ? { now: {} } : isHist(ITEMS.find((x) => x.id === id) || {}) ? {} : { now: {}, child: {} }));
   const isSimple = (it) => it.rev || it.kind === "diff" || it.kind === "strength";
   const open = (it) => ND.eligible(it, state.R);
   const openItems = () => ITEMS.filter(open);
@@ -45,6 +49,7 @@
     const r = state.R[it.id];
     if (!r) return false;
     if (r.na) return true;
+    if (isHist(it)) return Array.isArray(r.h) ? r.h.length > 0 : r.h != null;
     const f = it.kind === "func" ? "D" : "I";
     const ok = (p) => p && (p[f] != null || p.unknown || (p.custom && (p.text || "").trim()));
     if (it.kind === "scale" || it.kind === "comorb") return !!(r.now && r.now.I != null);
@@ -55,6 +60,9 @@
   function render() {
     if (state.view === "intro") renderIntro();
     else if (state.view === "q") renderQ();
+    else if (state.view === "practice") renderPractice();
+    else if (state.view === "recall") renderRecall();
+    else if (state.view === "brk") renderBreak();
     else if (state.view === "clin") renderClin();
     else renderReport();
   }
@@ -63,6 +71,7 @@
     const done = openItems().filter(answered).length;
     app.innerHTML = `
       <div class="wrap intro">
+        ${pix("social", "pix-hero")}
         <span class="eyebrow">Экспериментальный скрининг · версия 0.4</span>
         <h1>ND-Screen</h1>
         <p>Анкета о признаках аутизма (РАС) и СДВГ у взрослых. Она собирает содержание RAADS-R, AQ, CAT-Q, ASRS, RBQ-2A и доменов ADOS-2, ADI-R, DIVA-5 и сводит ответы к критериям DSM-5-TR.</p>
@@ -83,6 +92,7 @@
         <div class="row">
           <button class="btn primary" data-act="start">${done ? `Продолжить (отвечено ${done})` : "Начать анкету"}</button>
           <button class="btn" data-act="sample">Посмотреть пример отчёта</button>
+          <button class="btn ghost" data-act="practice">Как отвечать: пример вопроса</button>
           ${done ? `<button class="btn ghost" data-act="report">Отчёт по текущим ответам</button>` : ""}
         </div>
       </div>`;
@@ -183,10 +193,12 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           <div class="bar"><i style="width:${pct}%"></i></div>
         </div>
         <div class="card">
+          ${pix(SEC_PIX[it.sec], "pix-q")}
           ${it.fu ? `<span class="eyebrow">Уточняющий вопрос</span>` : ""}<div class="q-text">${esc(it.t)}</div>
           ${ND.HINTS && ND.HINTS[it.id] ? `<p class="hint"><b>Что имеется в виду.</b> ${esc(ND.HINTS[it.id])}</p>` : ""}
           ${it.kind === "strength" && it === ITEMS.find((x) => x.kind === "strength") ? `<p class="small muted">Этот раздел о сильных сторонах. На индексы и критерии он не влияет и показывается в отчёте отдельно.</p>` : ""}
-          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : periodBlock(it, r, "now") + (it.noChild ? "" : periodBlock(it, r, "child")) + extrasBlock(it, r))}
+          ${isHist(it) && it === ITEMS.find(isHist) ? `<p class="small muted">Несколько вопросов о раннем детстве и семье. Это факты для врача: на баллы, критерии и индексы они не влияют. Если не знаете ответа, можно спросить родных или выбрать «Не знаю».</p>` : ""}
+          ${r.na ? `<p class="muted">Отмечено как неприменимое. Нажмите ещё раз, чтобы ответить.</p>` : (it.kind === "scale" ? scaleBlock(it, r) : it.kind === "comorb" ? comorbQ(r) : isHist(it) ? histBlock(it, r) : periodBlock(it, r, "now") + (it.noChild ? "" : periodBlock(it, r, "child")) + extrasBlock(it, r))}
           <div class="nav">
             <button class="btn ghost" data-act="na" aria-pressed="${!!r.na}">${r.na ? "Ответить на вопрос" : "Неприменимо или непонятно"}</button>
             <div class="row">
@@ -197,6 +209,160 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         </div>
         <div class="row no-print"><button class="btn ghost small" data-act="home">На главную</button><button class="btn ghost small" data-act="report">Отчёт по текущим ответам</button></div>
       </div>`;
+  }
+
+  // ───────── пиксельные картинки (src/pixels.js) ─────────
+  const SEC_PIX = { social: "social", imag: "imag", routine: "routine", sensory: "sensory", camo: "camo", attention: "attention", activity: "activity",
+    exec: "exec", life: "life", history: "history", mood: "mood", emo: "emo", burnout: "burnout", wellbeing: "wellbeing", health: "health", strengths: "strengths" };
+  const pix = (name, cls = "") => (ND.PIXELS && ND.PIXELS[name] ? `<img class="pix ${cls}" src="${ND.PIXELS[name]}" alt="" aria-hidden="true" width="120" height="60">` : "");
+
+  // ───────── раннее развитие и семья: свои варианты ответа ─────────
+  function histBlock(it, r) {
+    const sel = Array.isArray(r.h) ? r.h : r.h == null ? [] : [r.h];
+    return `<fieldset class="period"><legend>${it.multi ? "Можно выбрать несколько" : "Ваш ответ"}</legend>
+      <div class="hist-opts">${it.opts.map((l, i) => `<button class="opt" data-act="hist" data-v="${i}" aria-pressed="${sel.includes(i)}">${esc(l)}</button>`).join("")}</div></fieldset>`;
+  }
+
+  // ───────── пример вопроса перед анкетой (K6) ─────────
+  const PRACTICE = { id: "PRACTICE", sec: "practice", t: "Я люблю сладкое." };
+  const pr = () => (state.prR = state.prR || { now: {}, child: {} });
+  function practiceNotes(r) {
+    const out = [];
+    const lvl = (p, w) => {
+      const x = r[p] || {};
+      if (x.unknown) return `${w}: «Не помню». Так можно ответить, если правда не помните: вопрос просто не войдёт в подсчёт.`;
+      if (x.I == null) return `${w}: пока нет ответа.`;
+      const means = ["это совсем не про вас", "в целом не про вас: бывает слабо или изредка", "есть заметно, но не во всём или не всегда", "это скорее про вас", "это точно про вас"][x.I];
+      return `${w}: «${I_LABELS[x.I]}» значит, что ${means}.${x.I >= 2 && !x.F ? " Ниже появился вопрос, как часто это бывает." : x.F ? ` Частота «${F_OPTS.find(([k]) => k === x.F)[1].toLowerCase()}» уточняет ответ: чем чаще, тем сильнее признак.` : ""}`;
+    };
+    out.push(lvl("now", "Сейчас"));
+    out.push(lvl("child", "В детстве"));
+    if (r.now && r.now.I >= 2) out.push("Когда сейчас выбрано «Частично» и выше, появляются вопросы о том, где это проявляется, видно ли со стороны и насколько мешает. Если не знаете, есть «Не знаю».");
+    out.push("«Свой ответ» нужен, если ни один вариант не подходит: можно написать своими словами.");
+    return out;
+  }
+  function renderPractice() {
+    const r = pr();
+    app.innerHTML = `
+      <div class="wrap">
+        <span class="eyebrow">Пример вопроса · ответ никуда не идёт</span>
+        <div class="card">
+          ${pix("practice", "pix-q")}
+          <p class="muted small">Так выглядит каждый вопрос анкеты. Попробуйте ответить на этот: он ничего не значит и в отчёт не попадёт.</p>
+          <div class="q-text">${esc(PRACTICE.t)}</div>
+          <p class="hint"><b>Что имеется в виду.</b> Под каждым вопросом анкеты будет такое пояснение с примерами.</p>
+          ${periodBlock(PRACTICE, r, "now")}${periodBlock(PRACTICE, r, "child")}${extrasBlock(PRACTICE, r)}
+          <div class="practice-notes"><b>Что значит ваш ответ</b><ul class="small stack">${practiceNotes(r).map((x) => `<li>${esc(x)}</li>`).join("")}</ul></div>
+          <div class="nav"><button class="btn ghost" data-act="practice-skip">Пропустить</button>
+            <button class="btn primary" data-act="practice-done">Понятно, дальше</button></div>
+        </div>
+      </div>`;
+  }
+
+  // ───────── «Машина времени» перед вопросами о детстве (K1) ─────────
+  // Перед тем как отвечать о детстве, полезно сначала вспомнить обстановку: так воспоминания точнее
+  // (метод календаря жизни, Belli, 1998; восстановление контекста в когнитивном интервью, Fisher & Geiselman, 1992).
+  const RECALL_STEPS = [
+    "Вспомните свою начальную школу: здание, класс, где вы сидели.",
+    "Вспомните учительницу или учителя и кого-то из одноклассников по имени.",
+    "Вспомните, что вы делали на переменах и после уроков, с кем дружили.",
+    "Вспомните свой дом тех лет: комнату, любимые игры и занятия.",
+  ];
+  const RECALL_BY_SEC = {
+    social: "Вспомните перемены и дни рождения в начальной школе: с кем вы играли, как знакомились, о чём говорили.",
+    imag: "Вспомните свои игры лет в 7–10: во что играли, придумывали ли истории, что любили разглядывать.",
+    routine: "Вспомните, чем вы увлекались в детстве, что собирали и как проходили ваши обычные утро и вечер.",
+    sensory: "Вспомните, что раздражало вас в детстве: одежда, еда, звуки, запахи, шум в столовой.",
+    camo: "Вспомните, как вы вели себя в классе и как дома: были ли вы разными.",
+    attention: "Вспомните уроки и домашние задания: как вы их делали и что говорили про ваши тетради и портфель.",
+    activity: "Вспомните, как вам сиделось на уроках, в очередях и в гостях.",
+    exec: "Вспомните, как вы злились, расстраивались и радовались в детстве и как быстро успокаивались.",
+    life: "Вспомните, как шли дела в школе, дома и с друзьями до 12 лет.",
+    strengths: "Вспомните, что у вас в детстве получалось лучше всего и за что вас хвалили.",
+  };
+  function renderRecall() {
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="card recall">
+          ${pix("school", "pix-wide")}
+          <span class="eyebrow">Машина времени · 30 секунд</span>
+          <h2>Сначала вспомните себя в 7–10 лет</h2>
+          <p>В каждом вопросе анкеты есть ответ «В детстве, до 12 лет». Воспоминания точнее, если сначала мысленно вернуться в ту обстановку.</p>
+          <ol class="recall-steps">${RECALL_STEPS.map((x) => `<li>${esc(x)}</li>`).join("")}</ol>
+          <div class="timer" aria-hidden="true"><i></i></div>
+          <p class="small muted">Если что-то не вспоминается, это нормально: в каждом вопросе есть «Не помню». Приём взят из методов, которые помогают вспоминать прошлое точнее (Belli, 1998; Fisher & Geiselman, 1992).</p>
+          <div class="nav"><button class="btn ghost" data-act="recall-done">Пропустить</button><button class="btn primary" data-act="recall-done">Я вспомнил(а), к вопросам</button></div>
+        </div>
+      </div>`;
+  }
+
+  // ───────── остановка между разделами (10) ─────────
+  const secOpen = (sid) => openItems().filter((x) => x.sec === sid);
+  function minutesLeft() {
+    const rts = ITEMS.map((x) => state.R[x.id] && state.R[x.id].rt).filter((x) => x > 1500 && x < 300000).sort((a, b) => a - b);
+    const med = rts.length >= 5 ? rts[Math.floor(rts.length / 2)] : 15000;
+    const left = openItems().filter((x) => !answered(x)).length;
+    return { left, min: Math.max(1, Math.round((left * med) / 60000)) };
+  }
+  function renderBreak() {
+    const next = ITEMS[state.idx], prev = ND.SECTIONS.find((x) => x.id === state.breaks[state.breaks.length - 1]) || {};
+    const nsec = ND.SECTIONS.find((x) => x.id === next.sec);
+    const secs = ND.SECTIONS.filter((x) => secOpen(x.id).length);
+    const doneSecs = secs.filter((x) => secOpen(x.id).every(answered)).length;
+    const T = minutesLeft();
+    const hasChild = secOpen(next.sec).some((x) => !x.noChild && !x.kind) || secOpen(next.sec).some((x) => x.kind === "strength");
+    const tip = hasChild && RECALL_BY_SEC[next.sec];
+    app.innerHTML = `
+      <div class="wrap">
+        <div class="card break">
+          ${pix(SEC_PIX[next.sec] || "break", "pix-wide")}
+          <span class="eyebrow">Готово разделов: ${doneSecs} из ${secs.length}</span>
+          <h2>Раздел «${esc(prev.title || "")}» готов</h2>
+          <div class="bar"><i style="width:${Math.round((doneSecs / secs.length) * 100)}%"></i></div>
+          <p>Дальше: <b>${esc(nsec.title)}</b>. По вашему темпу осталось примерно <b>${T.min} мин</b> (${T.left} вопр.${ITEMS.some((x) => x.fu && !open(x) && ITEMS.indexOf(x) > state.idx) ? ", плюс уточняющие, если понадобятся" : ""}).</p>
+          ${tip ? `<div class="recall-tip">${pix("school", "pix-mini")}<span><b>Перед ответами о детстве.</b> ${esc(tip)}</span></div>` : ""}
+          <p class="small muted">Все ответы сохранены в этом браузере. Можно сделать перерыв и вернуться позже: анкета продолжится с этого места.</p>
+          <div class="nav"><button class="btn ghost" data-act="brk-pause">Сделать перерыв</button><button class="btn primary" data-act="brk-go">Дальше</button></div>
+        </div>
+      </div>`;
+  }
+
+  // ───────── отчёт: раннее развитие, бюджет энергии, карта масок ─────────
+  function historyBlock(H) {
+    if (!H.rows.length) return "";
+    return `<section class="block"><h2>Раннее развитие и семья</h2>
+      <div class="tbl-wrap"><table><tbody>${H.rows.map((x) => `<tr><td>${esc(x.t)}</td><td>${x.flagged ? "<b>" : ""}${esc(x.answer)}${x.flagged ? "</b>" : ""}</td></tr>`).join("")}</tbody></table></div>
+      ${H.notes.map((n) => `<div class="flag"><span>${esc(n.text)}</span></div>`).join("")}
+      <p class="small muted">Это факты со слов, а не оценка. На баллы, критерии и индексы они не влияют, но для врача важны: DSM-5-TR требует, чтобы признаки были с раннего детства.</p></section>`;
+  }
+  const EV = (k) => `<span class="evtag evtag-${k}">${esc(ND.EVIDENCE[k])}</span>`;
+  function energyBlock(EN) {
+    if (!EN.drains.length) return "";
+    const bar = (s) => `<div class="meter"><i style="width:${pct(s)}%"></i></div>`;
+    return `<section class="block energy"><h2>Бюджет энергии</h2>
+      <div class="row-pix">${pix("energy", "pix-side")}<p class="muted">Черновик того, на что у вас, судя по ответам, уходят силы и что может их возвращать. Это не оценка и не лечение, а отправная точка для планирования. Отмечайте, что совпадает, а что нет.</p></div>
+      <div class="energy-cols">
+        <div><h3>Что, вероятно, тратит силы</h3><ul class="sup">${EN.drains.map((x) => `<li><div class="row" style="justify-content:space-between"><b>${esc(x.label)}</b><span class="mono small">${pct(x.s)}</span></div>${bar(x.s)}<span class="small">${esc(x.why)}</span><span class="small muted">${EV(x.ev)} ${esc(x.src)}</span></li>`).join("")}</ul></div>
+        <div><h3>Что может восстанавливать</h3>${EN.charges.length ? `<ul class="sup">${EN.charges.map((x) => `<li><b>${esc(x.label)}</b><span class="small">${esc(x.how)}</span><span class="small muted">${EV(x.ev)} ${esc(x.src)}</span></li>`).join("")}</ul>` : `<p class="small muted">По ответам подсказать не получилось. Подумайте, после чего вы чувствуете себя лучше, и впишите это в черновик недели.</p>`}</div>
+      </div>
+      <h3>Черновик недели</h3>
+      <div class="tbl-wrap"><table class="week"><thead><tr><th>День</th><th>Нагрузка</th><th>Восстановление</th></tr></thead><tbody>${EN.week.map(([d, a, b]) => `<tr><td class="mono">${d}</td><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join("")}</tbody></table></div>
+      <p class="small muted">Принцип: не ставить тяжёлые дни подряд и после каждой нагрузки оставлять время на восстановление. Идея «бюджета сил» пришла из опыта людей с хроническими состояниями и нейроотличных людей («теория ложек», Miserandino, 2003). Исследований её пользы пока нет. На баллы, критерии и индексы блок не влияет.</p></section>`;
+  }
+  function maskMapBlock(M) {
+    if (M.n < 3) return "";
+    const lvl = (x) => `<div class="meter mask"><i style="width:${pct(x.level)}%"></i></div>`;
+    const row = (x) => `<tr><td>${esc(x.label)}</td><td>${lvl(x)}</td><td class="small">скрываете ${x.hidden} из ${x.n}${x.effort ? `, с усилием ${x.effort}` : ""}</td></tr>`;
+    const head = M.most ? `Сильнее всего вы прячете себя ${M.most.key === "work" ? "на работе или учёбе" : M.most.key === "strangers" ? "с незнакомыми" : M.most.key === "friends" ? "с друзьями" : "дома"}: скрываете там ${M.most.hidden} из ${M.most.n} признаков, которые там проявляются.${M.least ? ` Меньше всего: ${M.least.key === "home" ? "дома" : M.least.key === "friends" ? "с друзьями" : M.least.key === "strangers" ? "с незнакомыми" : "на работе или учёбе"} (${M.least.hidden} из ${M.least.n}).` : ""}`
+      : `Вы скрываете ${M.hidden} из ${M.n} признаков${M.places.length >= 2 ? ", и почти одинаково во всех местах, где они проявляются" : ""}.`;
+    return `<section class="block"><h2>Карта масок</h2>
+      <div class="row-pix">${pix("masks", "pix-side")}<p><b>${esc(head)}</b></p></div>
+      <h3>Где</h3>
+      <div class="tbl-wrap"><table><thead><tr><th>Обстановка</th><th>Насколько скрываете</th><th>Признаков</th></tr></thead><tbody>${M.places.map(row).join("")}</tbody></table></div>
+      <h3>Что</h3>
+      <div class="tbl-wrap"><table><thead><tr><th>Сфера</th><th>Насколько скрываете</th><th>Признаков</th></tr></thead><tbody>${M.areas.map(row).join("")}</tbody></table></div>
+      ${M.top.length ? `<p class="small"><b>Скрываете с усилием:</b> ${M.top.map((t) => `«${esc(t.replace(/\.$/, ""))}»`).join("; ")}.</p>` : ""}
+      <p class="small muted">Карта собрана из ваших ответов «где проявляется» и «видно ли это со стороны» по признакам РАС и СДВГ, где сейчас выбрано «частично» и выше. Вопрос о том, видно ли со стороны, задавался про признак в целом, а не про каждое место отдельно, поэтому карта приблизительная. Маскировка связана с усталостью, тревогой и выгоранием (Hull et al., 2017; Cage & Troxell-Whitman, 2019), поэтому полезно знать, где она отнимает больше всего сил. На баллы, критерии и индексы карта не влияет${M.catq != null ? `; общий камуфляж по пересчёту в CAT-Q — ${Math.round(M.catq)} из 175, он показан ниже` : ""}.</p></section>`;
   }
 
   // ───────── report ─────────
@@ -272,15 +438,21 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
 
         ${radarBlock(E)}
 
+        ${maskMapBlock(ND.insights.maskMap(E, state.R))}
+
         ${consistencyBlock(E.validity)}
 
         ${supportBlock(ND.support(E, state.R))}
+
+        ${energyBlock(ND.insights.energy(E))}
 
         ${strengthsBlock(E.strengths)}
 
         ${scalesBlock(E.scales)}
 
         ${comorbBlock(E)}
+
+        ${historyBlock(ND.insights.history(state.R))}
 
         ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
@@ -596,6 +768,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       ...(E.strengths.some((x) => x.s >= ND.PARAMS.thetaLo) ? ["Сильные стороны (не входят в индексы):", ...E.strengths.filter((x) => x.s >= ND.PARAMS.thetaLo).map((x) => `  ${x.label}: сейчас ${pct(x.s)}${x.child != null ? `, в детстве ${pct(x.child)}` : ""}`)] : []),
       ...Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.score != null).map((x) => ND.clinician.scaleLine(x)),
       ...E.differential.map((d) => `Флаг: ${d.label}`),
+      ...(() => { const H = ND.insights.history(state.R); return H.rows.length ? ["Раннее развитие и семья (со слов): " + H.rows.map((x) => `${x.t.toLowerCase()}: ${x.answer}`).join("; ")] : []; })(),
       ...(() => { const y = ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I === 0); return y.length && ND.scoring.overall(E).code !== "nt" ? [`Сопутствующие состояния: ${y.map((it) => it.t.replace(/\.$/, "")).join("; ")}`] : []; })(),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.flatMap((f) => [`  ${f.text}`, ...(f.details || []).flatMap((d) => ND.clinician.conflictText(d, state.R).map((x) => "    " + x))]),
@@ -621,16 +794,44 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const b = e.target.closest("[data-act]");
     if (!b || b.tagName === "DETAILS" || b.tagName === "TEXTAREA" || b.tagName === "INPUT") return;
     const act = b.dataset.act;
-    const it = ITEMS[state.idx];
-    const r = state.view === "q" ? resp(it.id) : null;
+    const it = state.view === "practice" ? PRACTICE : ITEMS[state.idx];
+    const r = state.view === "q" ? resp(it.id) : state.view === "practice" ? pr() : null;
     switch (act) {
       case "start":
-        if (state.sample) state = load() || fresh();
-        state.view = "q"; state.sample = false;
+        if (state.sample) { state = load() || fresh(); state.seen = state.seen || {}; state.breaks = state.breaks || []; }
+        state.sample = false;
+        // при первом запуске: пример вопроса, затем «машина времени»
+        if (!openItems().some(answered) && !state.seen.practice) { state.view = "practice"; save(); render(); window.scrollTo(0, 0); return; }
+        if (!openItems().some(answered) && !state.seen.recall) { state.view = "recall"; save(); render(); window.scrollTo(0, 0); return; }
+        state.view = "q";
         { const first = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = first === -1 ? 0 : first; }
         shownAt = Date.now(); save(); render(); return;
       case "resume": state.view = "q"; if (!open(ITEMS[state.idx])) state.idx = Math.max(0, nextOpen(state.idx, -1)); shownAt = Date.now(); save(); render(); return;
-      case "sample": state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true }; render(); window.scrollTo(0, 0); return;
+      case "sample": state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [] }; render(); window.scrollTo(0, 0); return;
+      case "practice": if (state.sample) state = load() || fresh(); state.view = "practice"; state.seen = state.seen || {}; state.breaks = state.breaks || []; save(); render(); window.scrollTo(0, 0); return;
+      case "practice-skip": case "practice-done": {
+        state.seen.practice = true; delete state.prR;
+        const first = !openItems().some(answered);
+        state.view = first && !state.seen.recall ? "recall" : first ? "q" : "intro";
+        if (state.view === "q") { const f = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = f === -1 ? 0 : f; shownAt = Date.now(); }
+        save(); render(); window.scrollTo(0, 0); return;
+      }
+      case "recall-done": {
+        state.seen.recall = true; state.view = "q";
+        const f = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = f === -1 ? 0 : f;
+        shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return;
+      }
+      case "brk-go": state.view = "q"; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return;
+      case "brk-pause": state.view = "intro"; save(); render(); window.scrollTo(0, 0); toast("Ответы сохранены. Возвращайтесь, когда будет удобно"); return;
+      case "hist": {
+        const v = +b.dataset.v;
+        if (!it.multi) { r.h = r.h === v ? null : v; break; }
+        let h = Array.isArray(r.h) ? r.h.slice() : [];
+        const only = it.only || [];
+        if (h.includes(v)) h = h.filter((x) => x !== v);
+        else h = only.includes(v) ? [v] : h.filter((x) => !only.includes(x)).concat(v);
+        r.h = h.sort((a, b) => a - b); break;
+      }
       case "home": if (state.sample) state = load() || fresh(); state.view = "intro"; save(); render(); return;
       case "report": state.view = "report"; save(); render(); window.scrollTo(0, 0); return;
       case "goto": { const i = ITEMS.findIndex((x) => x.id === b.dataset.id); if (i < 0) return; state.view = "q"; state.idx = i; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return; }
@@ -653,6 +854,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       case "next": {
         const j = nextOpen(state.idx, 1);
         if (j === -1) { go(-1); state.view = "report"; save(); render(); window.scrollTo(0, 0); return; }
+        // переход в новый раздел: экран-остановка (один раз на раздел)
+        if (ITEMS[j].sec !== it.sec && !state.breaks.includes(it.sec)) { state.breaks.push(it.sec); go(j); state.view = "brk"; save(); render(); return; }
         go(j); return;
       }
       case "copy-summary": {
@@ -702,6 +905,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   });
   app.addEventListener("input", (e) => {
     if (e.target.dataset.act === "text") {
+      if (state.view === "practice") { pr()[e.target.dataset.p].text = e.target.value; return; }
       const it = ITEMS[state.idx], r = resp(it.id);
       const before = answered(it);
       r[e.target.dataset.p].text = e.target.value; save();

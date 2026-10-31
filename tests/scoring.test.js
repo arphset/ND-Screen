@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js", "insights.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -22,6 +22,7 @@ for (const it of ITEMS) {
   if (it.kind === "diff") { check(`${it.id}: флаг`, !!ND.DIFF_LABELS[it.d]); continue; }
   if (it.kind === "scale") { check(`${it.id}: шкала`, !!ND.SCALES[it.scale] && !it.c && !it.s && !it.src); continue; }
   if (it.kind === "comorb") { check(`${it.id}: сопутствующее состояние с данными и источником`, !it.c && !it.s && !it.src && it.co.length > 0 && it.co.every((c) => /\(.*\d{4}/.test(c.t)) && ["strong", "moderate", "weak"].includes(it.conf)); continue; }
+  if (it.kind === "hist") { check(`${it.id}: вопрос о раннем развитии без связи с подсчётом`, !it.c && !it.s && !it.src && it.opts.length >= 2 && (it.flags || []).every((f) => f.on.every((i) => i < it.opts.length) && /\d{4}|DSM/.test(f.note))); continue; }
   if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
@@ -184,6 +185,7 @@ for (let k = 0; k < 300; k++) {
   function noise() {
     const R = {};
     for (const it of ITEMS) {
+      if (it.kind === "hist") continue; // вопросы о раннем развитии в подсчёт не входят: поток случайных чисел как до v0.10
       if (it.kind === "func") { R[it.id] = { now: { D: Math.floor(rnd() * 4) }, child: { D: Math.floor(rnd() * 4) } }; continue; }
       const mk = () => { const I = Math.floor(rnd() * 5); return I >= 2 ? { I, F: pick(FREQ) } : { I }; };
       R[it.id] = { now: mk(), child: mk(), rt: 5000, harm: Math.floor(rnd() * 4), mask: Math.floor(rnd() * 3), ctx: rnd() < 0.5 ? ["home"] : [] };
@@ -515,6 +517,39 @@ check("нет пояснений к несуществующим вопроса�
   check("в отчёте для специалиста нет undefined/NaN и есть все разделы", bad === 0, bad);
   const C = ND.clinician.build(ND.sampleResponses());
   check("в отчёте для специалиста под критерием есть ответы-основания", /сейчас: (в основном да|полностью да)/.test(C.text), C.text.slice(0, 400));
+}
+
+// ── v0.10: раннее развитие, бюджет энергии, карта масок ни на что не влияют ──
+{
+  const HX = ITEMS.filter((x) => x.kind === "hist");
+  check("в разделе о раннем развитии 7 вопросов", HX.length === 7 && HX.every((x) => x.sec === "history"));
+  const key = (E) => JSON.stringify([E.asd, E.adhd, E.constructs, E.symptoms, E.validity, E.legacy, E.scales, E.strengths, E.differential]);
+  let same = 0, n = 0;
+  for (let k = 0; k < 150; k++) {
+    const R = {};
+    for (const it of ITEMS) {
+      if (it.kind === "hist") continue;
+      if (it.kind === "func") { R[it.id] = { now: { D: Math.floor(rnd() * 4) }, child: { D: Math.floor(rnd() * 4) } }; continue; }
+      const I = Math.floor(rnd() * 5);
+      R[it.id] = { now: { I, F: FREQ[Math.floor(rnd() * 4)] }, child: { I: Math.floor(rnd() * 5), F: FREQ[Math.floor(rnd() * 4)] }, ctx: ["home", "work", "friends", "strangers"].filter(() => rnd() > 0.5), mask: Math.floor(rnd() * 3), harm: Math.floor(rnd() * 4), rt: 3000 + rnd() * 9000 };
+    }
+    const R2 = JSON.parse(JSON.stringify(R));
+    for (const it of HX) R2[it.id] = { h: it.multi ? [0, 1] : 1, rt: 50 };
+    const E = ev(R), E2 = ev(R2);
+    n++; if (key(E) === key(E2)) same++;
+    const EN = ND.insights.energy(E), M = ND.insights.maskMap(E, R), H = ND.insights.history(R2);
+    check("бюджет энергии: только выраженные сферы, по убыванию, неделя из 7 дней",
+      EN.drains.every((x, i) => x.s >= ND.PARAMS.thetaLo && (!i || EN.drains[i - 1].s >= x.s)) && (EN.drains.length ? EN.week.length === 7 : !EN.week.length) && [...EN.drains, ...EN.charges].every((x) => ND.EVIDENCE[x.ev] && x.src));
+    check("карта масок: счётчики сходятся", M.hidden <= M.n && M.effort <= M.hidden && [...M.places, ...M.areas].every((x) => x.hidden <= x.n && x.level >= 0 && x.level <= 1));
+    check("раннее развитие: все ответы показаны, пояснения без повторов", H.rows.length === HX.length && new Set(H.notes.map((x) => x.key)).size === H.notes.length);
+  }
+  check("ответы о раннем развитии и семье не меняют баллы, критерии, индексы и согласованность", same === n, `${same}/${n}`);
+  const H0 = ND.insights.history({ "HX-5": { h: [6] }, "HX-1": { h: 2 } });
+  check("«Ничего особенного» и «Не знаю» не дают пояснений", H0.rows.length === 2 && !H0.notes.length);
+  const H1 = ND.insights.history({ "HX-1": { h: 1 }, "HX-2": { h: 1 } });
+  check("одинаковое пояснение о речи показывается один раз", H1.notes.length === 1 && H1.notes[0].key === "speech");
+  const S = ND.sampleResponses(), C = ND.clinician.build(S);
+  check("в отчёте для специалиста есть раннее развитие и карта масок", /РАННЕЕ РАЗВИТИЕ И СЕМЬЯ/.test(C.text) && /КАРТА МАСОК/.test(C.text));
 }
 
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);

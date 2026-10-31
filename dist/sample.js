@@ -59,5 +59,8 @@ ND.sampleResponses = function () {
   });
   for (const id of ND.NO_CHILD) if (R[id]) delete R[id].child;
   for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (R[id] && R[id][p]) delete R[id][p].F;
+  // раннее развитие и семья (v0.10): в подсчёт не входит
+  Object.assign(R, { "HX-1": { h: 0, rt: 4000 }, "HX-2": { h: 2, rt: 4000 }, "HX-3": { h: 0, rt: 4000 }, "HX-4": { h: 1, rt: 5000 },
+    "HX-5": { h: [3, 5], rt: 6000 }, "HX-6": { h: [7], rt: 5000 }, "HX-7": { h: 1, rt: 4000 } });
   return R;
 };

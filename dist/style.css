@@ -231,3 +231,30 @@ ul.why-list { margin: 4px 0 0; padding-left: 1.1em; display: grid; gap: 6px; }
 .share-card img { width: 100%; max-width: 360px; border-radius: 12px; border: 1px solid var(--line); }
 a.btn { text-decoration: none; color: inherit; display: inline-flex; align-items: center; }
 .scale-key { display: flex; flex-direction: column; gap: 2px; }
+
+/* v0.10: пиксельные картинки, пример вопроса, «машина времени», остановки, бюджет энергии, карта масок */
+.pix { image-rendering: pixelated; image-rendering: crisp-edges; display: block; height: auto; border-radius: 8px; }
+.pix-q { width: 240px; max-width: 100%; justify-self: center; }
+.pix-hero { width: 360px; max-width: 100%; }
+.pix-wide { width: 480px; max-width: 100%; justify-self: center; }
+.pix-side { width: 180px; flex: none; }
+.pix-mini { width: 72px; flex: none; border-radius: 4px; }
+.row-pix { display: flex; gap: 16px; align-items: center; }
+@media (max-width: 520px) { .row-pix { flex-direction: column; align-items: flex-start; } .pix-q { width: 180px; } }
+.hist-opts { display: grid; gap: 6px; }
+.hist-opts .opt { text-align: left; padding-inline: 12px; min-height: 40px; }
+.practice-notes { border: 1px dashed var(--line); border-radius: var(--r); padding: 12px 14px; }
+.practice-notes ul { margin: 6px 0 0; padding-left: 1.1em; }
+.recall h2, .break h2 { margin: 0; }
+.recall-steps { margin: 0; padding-left: 1.3em; display: grid; gap: 8px; }
+.timer { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; }
+.timer > i { display: block; height: 100%; width: 0; background: var(--accent); animation: nd-timer 30s linear forwards; }
+@keyframes nd-timer { to { width: 100%; } }
+@media (prefers-reduced-motion: reduce) { .timer > i { animation: none; width: 100%; opacity: 0.4; } }
+.recall-tip { display: flex; gap: 12px; align-items: center; background: var(--accent-soft); border-radius: var(--r); padding: 10px 12px; }
+.energy-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 640px) { .energy-cols { grid-template-columns: 1fr; } }
+.energy h3 { margin: 6px 0; }
+table.week td:first-child { width: 3em; }
+.meter.mask > i { background: var(--warn); }
+@media print { .pix-q, .pix-hero, .pix-wide, .pix-mini { display: none; } }
