@@ -204,7 +204,7 @@ ND.scoring = (function () {
 
     // 6. Однообразие, скорость, «неприменимо»
     // шкалы (PHQ-9, GAD-7, PAQ, ABSI) и сопутствующие состояния в проверку согласованности не входят
-    const extra = (it) => it.kind === "scale" || it.kind === "comorb" || it.kind === "hist";
+    const extra = (it) => it.kind === "scale" || it.kind === "comorb" || it.kind === "hist" || it.kind === "trait";
     const core = ND.ITEMS.filter((x) => !extra(x)).map((x) => R[x.id]);
     const Is = ND.ITEMS.filter((x) => x.kind !== "func" && x.kind !== "strength" && !extra(x)).map((x) => R[x.id]).filter((r) => r && !r.na && r.now && r.now.I != null).map((r) => r.now.I);
     if (Is.length >= 30) {
@@ -258,6 +258,10 @@ ND.scoring = (function () {
         COG: { label: "Сбои памяти и мышления", items: [9, 10, 11, 12, 13] },
         AUT: { label: "Усиление аутичных особенностей и самокритики", items: [14, 15, 16, 17, 18, 19, 20] },
       } },
+    // Adult Concentration Inventory, 10 пунктов вялого когнитивного темпа (Becker et al., 2018; Fredrick et al., 2021).
+    // Ответы 0–3 за последние 6 месяцев, балл — среднее (как в статьях), порогов нет. Для ориентира: в выборке взрослых
+    // из общей популяции США среднее 0,53, стандартное отклонение 0,49 (Fredrick et al., 2021, n = 286). Перевод наш, неофициальный.
+    ACI: { name: "ACI", label: "Вялый когнитивный темп", n: 10, lo: 0, k: 4, max: 3, mean: true, maxMiss: 2, sec: "cds", ref: 0.53, refSd: 0.49 },
   };
   // Сумма шкалы (или среднее, если mean): пропуски до maxMiss (по умолчанию 1) пересчитываются пропорционально.
   function sumScale(vals, n, mean, maxMiss = 1) {

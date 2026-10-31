@@ -70,5 +70,24 @@ ND.sampleLab = function () {
   return {
     probes: [{ a: "task" }, { a: "other", how: "spont" }, { a: "task" }, { a: "other", how: "spont" }, { a: "blank" }, { a: "other", how: "delib" }],
     dd: { w1: ["later", "later", "later", "now", "later"], m1: ["later", "later", "now", "now", "later"], m6: ["later", "now", "now", "later", "now"], y1: ["now", "later", "now", "now", "later"] },
+    ...(ND.lab ? ND.sampleTasks() : {}),
   };
+};
+
+// Пример результатов заданий Б10–Б13 (выдуманные данные, детерминированные)
+ND.sampleTasks = function () {
+  const r = ND.lab.rng(42), g = () => (r() + r() + r() - 1.5) * 1.4;
+  const rt = [];
+  for (let i = 0; i < ND.lab.RT.N + ND.lab.RT.PRACTICE; i++) rt.push({ rt: Math.round(310 + 55 * g() + (i % 9 === 4 ? 380 : 0)), practice: i < ND.lab.RT.PRACTICE });
+  rt[20] = { rt: null, early: true };
+  const tp = [{ target: 10, produced: 8.1 }, { target: 30, produced: 22.4 }, { target: 60, produced: 49.8 }, { target: 30, produced: 25.9 }, { target: 10, produced: 8.8 }];
+  let hiMiss = 0, fa = 0, err = 0;
+  const load = ND.lab.loadTrials(5).map((t) => {
+    const wrong = t.load === "high" && err < 3 && r() < 0.3 && ++err;
+    const saw = t.extra ? !(t.load === "high" && hiMiss < 1 && ++hiMiss) : !(fa < 1 && r() < 0.1 && ++fa) ? false : true;
+    return { load: t.load, extra: t.extra, target: t.target, ans: wrong ? (t.target === "X" ? "N" : "X") : t.target, saw };
+  });
+  const navon = ND.lab.navonTrials(9).filter((t) => !t.practice).map((t) => ({ block: t.block, big: t.big, small: t.small,
+    ans: t.block === "global" ? t.big : t.small, rt: Math.round((t.block === "global" ? 560 : 520) + (t.big !== t.small ? 45 : 0) + 60 * g()) }));
+  return { rt, tp, tpCounted: false, load, navon };
 };

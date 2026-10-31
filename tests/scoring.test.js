@@ -23,6 +23,7 @@ for (const it of ITEMS) {
   if (it.kind === "scale") { check(`${it.id}: шкала`, !!ND.SCALES[it.scale] && !it.c && !it.s && !it.src); continue; }
   if (it.kind === "comorb") { check(`${it.id}: сопутствующее состояние с данными и источником`, !it.c && !it.s && !it.src && it.co.length > 0 && it.co.every((c) => /\(.*\d{4}/.test(c.t)) && ["strong", "moderate", "weak"].includes(it.conf)); continue; }
   if (it.kind === "hist") { check(`${it.id}: вопрос о раннем развитии без связи с подсчётом`, !it.c && !it.s && !it.src && it.opts.length >= 2 && (it.flags || []).every((f) => f.on.every((i) => i < it.opts.length) && /\d{4}|DSM/.test(f.note))); continue; }
+  if (it.kind === "trait") { check(`${it.id}: черта вне DSM без связи с подсчётом`, !it.c && !it.s && !it.src && (!!ND.TRAITS[it.tr] || it.tr === "inertiaDep")); continue; }
   if (it.kind === "strength") { check(`${it.id}: домен сильной стороны`, !!ND.STRENGTHS[it.st] && !it.c && !it.s && !it.src); continue; }
   check(`${it.id} входит в подсчёт (конструкт или симптом)`, (it.c && ND.CONSTRUCTS[it.c]) || (it.s && ND.ADHD_SYMPTOMS[it.s]), it);
   if (it.fu) check(`${it.id}: у уточняющего есть основной вопрос в группе`, ITEMS.some((x) => !x.fu && !x.rev && ND.groupOf(x) === ND.groupOf(it)));
@@ -422,7 +423,7 @@ for (let k = 0; k < 300; k++) {
 // ── Сопутствующие состояния ──
 {
   const co = ITEMS.filter((x) => x.kind === "comorb");
-  check("сопутствующих состояний 14", co.length === 14);
+  check("сопутствующих состояний 17", co.length === 17);
   let same = 0, tot = 0;
   for (let k = 0; k < 80; k++) {
     const R = profile(() => Math.floor(rnd() * 5));
@@ -591,6 +592,79 @@ check("нет пояснений к несуществующим вопроса�
   // музыка: петля детерминирована и в пентатонике
   const m1 = ND.music.makeLoop(ND.music.hash("social")), m2 = ND.music.makeLoop(ND.music.hash("social"));
   check("музыка: петля одинакова для раздела, 16 шагов, 4 баса", JSON.stringify(m1) === JSON.stringify(m2) && m1.mel.length === 16 && m1.bass.length === 4);
+}
+
+// ── v0.12: лаборатория, задания Б10–Б13 ──
+{
+  const L = ND.lab;
+  // Б10: разброс времени реакции
+  const flat = Array.from({ length: L.RT.N }, () => ({ rt: 300 }));
+  const wavy = Array.from({ length: L.RT.N }, (_, i) => ({ rt: i % 2 ? 250 : 650 }));
+  const F = L.rtSummary(flat), W = L.rtSummary(wavy);
+  check("реакция: одинаковые ответы дают нулевой разброс", F.done && F.enough && F.cv === 0 && F.median === 300 && F.slow === 0, F);
+  check("реакция: «волны» дают большой разброс", W.cv > 0.4 && W.median === 450, W);
+  const mixed = [{ rt: 300, practice: true }, { rt: null, early: true }, { rt: 90 }, { rt: null }, { rt: 1800 }, ...Array(30).fill({ rt: 300 })];
+  const M = L.rtSummary(mixed);
+  check("реакция: тренировка не считается, ранние/пропуски/слишком быстрые отдельно", M.n === 34 && M.valid === 30 && M.early === 1 && M.miss === 2 && M.tooFast === 1 && !M.done, M);
+  check("реакция: меньше 30 засчитанных — разброса нет", !L.rtSummary(Array(20).fill({ rt: 300 })).enough);
+  const fp = L.rtForeperiods(7);
+  check("реакция: паузы 1–3 с, детерминированы", fp.length === L.RT.N + L.RT.PRACTICE && fp.every((x) => x >= 1000 && x <= 3000) && JSON.stringify(fp) === JSON.stringify(L.rtForeperiods(7)));
+  // Б11: интервалы
+  const T1 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t * 0.5 })));
+  const T2 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t * 2 })));
+  const T3 = L.tpSummary(L.TP_TARGETS.map((t) => ({ target: t, produced: t })));
+  check("интервалы: вдвое короче и вдвое дольше симметричны", T1.done && Math.abs(T1.gm - 0.5) < 1e-9 && Math.abs(T2.gm - 2) < 1e-9 && T1.dir === "fast" && T2.dir === "slow" && T3.dir === "ok" && T3.err === 0);
+  check("интервалы: различие повторов считается", Math.abs(L.tpSummary([{ target: 10, produced: 8 }, { target: 10, produced: 12 }]).repeatDiff - 0.4) < 1e-9);
+  // Б12: нагрузка
+  const LT = L.loadTrials(3);
+  const cnt = (f) => LT.filter(f).length;
+  check("нагрузка: 32 попытки, 16/16, квадрат в половине каждого уровня, X и N поровну", LT.length === 32 && cnt((t) => t.load === "low") === 16 && cnt((t) => t.load === "low" && t.extra) === 8 && cnt((t) => t.load === "high" && t.extra) === 8 && cnt((t) => t.target === "X") === 16);
+  check("нагрузка: при низкой нагрузке только «o», при высокой разные буквы без X и N", LT.every((t) => t.fill.length === 5 && (t.load === "low" ? t.fill.every((c) => c === "o") : new Set(t.fill).size === 5 && !t.fill.some((c) => c === "X" || c === "N"))));
+  const typical = LT.map((t) => ({ ...t, ans: t.target, saw: t.extra && (t.load === "low" || t.target === "X") }));
+  const LS = L.loadSummary(typical);
+  check("нагрузка: падение обнаружения при высокой нагрузке считается", LS.done && LS.low.hit === 1 && LS.high.hit === 0.5 && Math.abs(LS.drop - 0.5) < 1e-9 && LS.low.fa === 0 && !LS.unreliable, LS);
+  check("нагрузка: типичное падение — не «большой запас»", !LS.bigCapacity && !LS.lowMissed);
+  const all = L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: t.extra })));
+  check("нагрузка: замечает при любой нагрузке — «большой запас»", all.bigCapacity && all.drop === 0);
+  const fa = L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: t.extra || (t.load === "high" && t.target === "X") })));
+  check("нагрузка: ложные «видел» вычитаются из замеченных", Math.abs(fa.high.net - 0.5) < 1e-9 && !fa.bigCapacity, fa.high);
+  check("нагрузка: не замечал и при лёгком поиске — сравнение не делается", L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: false }))).lowMissed);
+  check("нагрузка: «вижу всегда» помечается как ненадёжное", L.loadSummary(LT.map((t) => ({ ...t, ans: t.target, saw: true }))).unreliable);
+  // Б13: Навон
+  const NT = L.navonTrials(11), real = NT.filter((t) => !t.practice);
+  check("Навон: 2 блока по 16 и по 4 тренировочные, все 4 сочетания поровну", real.length === 32 && NT.length === 40 && ["global", "local"].every((b) => real.filter((t) => t.block === b).length === 16 && real.filter((t) => t.block === b && t.big === t.small).length === 8));
+  const ans = real.map((t) => ({ ...t, ans: t.block === "global" ? t.big : t.small, rt: (t.block === "global" ? 500 : 600) + (t.big !== t.small ? 50 : 0) }));
+  const NS = L.navonSummary(ans);
+  check("Навон: глобальное преимущество и интерференция", NS.enough && NS.globalAdv === 100 && NS.global.interf === 50 && NS.local.interf === 50 && NS.global.acc === 1, NS);
+  check("Навон: много ошибок — ненадёжно", !L.navonSummary(real.map((t) => ({ ...t, ans: "Н", rt: 500 }))).enough);
+  check("Навон: формы букв 5×7", Object.values(L.NAVON_SHAPES).every((g) => g.length === 7 && g.every((r) => r.length === 5)));
+  // ничего из этого не трогает баллы
+  const S = ND.sampleResponses(), E1 = JSON.stringify(ND.scoring.evaluate(S)), SL = ND.sampleLab();
+  check("пример: все четыре задания пройдены", L.rtSummary(SL.rt).enough && L.tpSummary(SL.tp).done && L.loadSummary(SL.load).done && L.navonSummary(SL.navon).enough);
+  const C = ND.clinician.build(S, SL);
+  check("задания попадают в отчёт специалиста внутри раздела лаборатории", /Простая реакция/.test(C.text) && /Отмеривание интервалов/.test(C.text) && /Перцептивная нагрузка/.test(C.text) && /Фигуры Навона/.test(C.text) && C.text.replace(/ЛАБОРАТОРИЯ[\s\S]*?\n\n/, "") === ND.clinician.build(S).text);
+  check("задания не меняют evaluate", JSON.stringify(ND.scoring.evaluate(S)) === E1);
+}
+
+// ── v0.12: ACI, черты вне DSM, новые сопутствующие ──
+{
+  const aci = ITEMS.filter((x) => x.scale === "ACI");
+  check("ACI: 10 пунктов в своём разделе", aci.length === 10 && aci.every((x) => x.sec === "cds"));
+  const R = {}; aci.forEach((x, i) => (R[x.id] = { now: { I: i < 5 ? 3 : 1 } }));
+  check("ACI: балл — среднее 0–3", ND.scoring.scales(R).ACI.score === 2);
+  delete R["ACI-1"]; delete R["ACI-2"]; check("ACI: два пропуска допустимы", ND.scoring.scales(R).ACI.score != null);
+  delete R["ACI-3"]; check("ACI: три пропуска — балла нет", ND.scoring.scales(R).ACI.score == null);
+  check("ACI не даёт дифференциальных флагов", !ND.scoring.evaluate(Object.fromEntries(aci.map((x) => [x.id, { now: { I: 3 } }]))).differential.some((d) => d.scale === "ACI"));
+  const t6 = ITEMS.find((x) => x.id === "TR-6"), phq = (v) => Object.fromEntries(Array.from({ length: 9 }, (_, i) => [`PHQ-${i + 1}`, { now: { I: v } }]));
+  check("TR-6 закрыт без инерции", !ND.eligible(t6, { ...phq(3) }));
+  check("TR-6 закрыт при низком PHQ-9", !ND.eligible(t6, { ...phq(0), "TR-1": { now: { I: 2 } } }));
+  check("TR-6 открыт при инерции и PHQ-9 ≥ 10", ND.eligible(t6, { ...phq(2), "TR-1": { now: { I: 1 } } }));
+  check("черты: у каждой есть уровень доказательности и ссылка на карту", Object.values(ND.TRAITS).every((T) => ["strong", "moderate", "weak", "contested"].includes(T.ev) && T.map && T.known && /\d{4}/.test(T.known)));
+  // новые вопросы не меняют подсчёт РАС и СДВГ
+  const S = ND.sampleResponses(), base = JSON.stringify({ ...ND.scoring.evaluate(S), scales: null });
+  const S2 = JSON.parse(JSON.stringify(S));
+  for (const it of ITEMS.filter((x) => x.kind === "trait" || x.scale === "ACI" || ["CO-15", "CO-16", "CO-17"].includes(x.id))) S2[it.id] = { now: { I: 2 } };
+  check("ACI, черты и новые сопутствующие не меняют подсчёт", JSON.stringify({ ...ND.scoring.evaluate(S2), scales: null }) === base);
 }
 
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);

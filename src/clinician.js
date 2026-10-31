@@ -211,6 +211,15 @@ ND.clinician = (function () {
     if (A && A.gate === 1) extra.push(["ABSI (аутистическое выгорание): со слов, выгорания не было", []]);
     else if (A && A.score != null) extra.push([`ABSI (аутистическое выгорание, Arnold 2023, неофициальный перевод): среднее ${f1(A.score)} из 7, выше — тяжелее; порогов нет`,
       Object.values(A.subs).map((x) => `${x.label}: ${x.score == null ? "—" : f1(x.score)}`)]);
+    const AC = E.scales.ACI;
+    if (AC && AC.score != null) extra.push([`ACI (вялый когнитивный темп, Becker 2018, неофициальный перевод): среднее ${AC.score.toFixed(2).replace(".", ",")} из 3; порогов нет, общая выборка взрослых США ${f1(AC.ref)} ± ${f1(AC.refSd)} (Fredrick 2021)`, []]);
+    const TRL = { 0: "нет", 1: "отчасти", 2: "да" };
+    const tr = ND.ITEMS.filter((it) => it.kind === "trait" && !it.opts && R[it.id] && !R[it.id].na && R[it.id].now && R[it.id].now.I >= 1);
+    if (tr.length) {
+      const dep = R["TR-6"], depI = dep && dep.now && ND.eligible(ND.ITEMS.find((x) => x.id === "TR-6"), R) ? dep.now.I : null;
+      const DEP = ["хочется, но не получается начать", "ничего не хочется", "по-разному", "не знает"];
+      extra.push(["Черты вне DSM (самоотчёт, в подсчёт не входят)", tr.map((it) => `${ND.TRAITS[it.tr].label}: ${TRL[Math.min(2, R[it.id].now.I)]}`).concat(depI != null ? [`Инерция при PHQ-9 ≥ 10: ${DEP[Math.min(3, depI)]}`] : [])]);
+    }
     if (extra.length || co.length) {
       h.push(`<section class="block"><h2>Дополнительные шкалы и сопутствующие состояния</h2>
         ${extra.map(([t, l]) => `<p><b>${esc(t)}</b></p>${l.length ? `<ul class="small stack">${l.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`).join("")}
@@ -253,8 +262,17 @@ ND.clinician = (function () {
         const line = `«Сейчас или потом» (подстройка суммы, 10 000 ₽, гипотетически): точки безразличия ${DD.points.map((p) => `${p.label.replace("через ", "")} ${p.ip} ₽`).join(", ")}; AUC ${DD.auc.toFixed(2)}` + (DD.jumps ? `; непоследовательных скачков: ${DD.jumps}` : "");
         rows.push(line); tx.push("  " + line);
       }
+      const r0_ = (x) => (x == null ? "—" : Math.round(x));
+      const RTs = ND.lab.rtSummary(lab.rt), TPs = ND.lab.tpSummary(lab.tp), LDs = ND.lab.loadSummary(lab.load), NVs = ND.lab.navonSummary(lab.navon);
+      const add = (line) => { rows.push(line); tx.push("  " + line); };
+      if (RTs.done) add(RTs.enough
+        ? `Простая реакция (${RTs.valid}/${RTs.n} засчитано): медиана ${r0_(RTs.median)} мс, среднее ${r0_(RTs.mean)} мс, SD ${r0_(RTs.sd)} мс, CV ${RTs.cv.toFixed(2)}; медленных (≥2× медианы) ${RTs.slow}; заранее ${RTs.early}, пропусков ${RTs.miss}` + (RTs.cv1 != null ? `; CV 1-я/2-я половина ${RTs.cv1.toFixed(2)}/${RTs.cv2.toFixed(2)}` : "")
+        : `Простая реакция: засчитано только ${RTs.valid} из ${RTs.n}, разброс не рассчитан`);
+      if (TPs.done) add(`Отмеривание интервалов: ${TPs.items.map((t) => `${t.target}→${t.produced} с`).join(", ")}; отношение (геом. среднее) ${TPs.gm.toFixed(2)}, средняя ошибка ${Math.round(TPs.err * 100)}%` + (lab.tpCounted ? "; считал(а) про себя" : ""));
+      if (LDs.done) add(`Перцептивная нагрузка: обнаружение квадрата низкая/высокая ${Math.round(LDs.low.hit * 100)}%/${Math.round(LDs.high.hit * 100)}% (ложные ${Math.round(LDs.low.fa * 100)}%/${Math.round(LDs.high.fa * 100)}%), точность букв ${Math.round(LDs.low.acc * 100)}%/${Math.round(LDs.high.acc * 100)}%` + (LDs.unreliable ? "; много ложных обнаружений" : "") + (LDs.guessing ? "; при высокой нагрузке на уровне угадывания" : ""));
+      if (NVs.done) add(`Фигуры Навона: медиана глоб./лок. ${r0_(NVs.global.rt)}/${r0_(NVs.local.rt)} мс (глоб. преимущество ${r0_(NVs.globalAdv)} мс), точность ${Math.round(NVs.global.acc * 100)}%/${Math.round(NVs.local.acc * 100)}%, интерференция глоб.→лок. ${r0_(NVs.local.interf)} мс, лок.→глоб. ${r0_(NVs.global.interf)} мс` + (NVs.enough ? "" : "; много ошибок, ненадёжно"));
       if (rows.length) {
-        h.push(`<section class="block"><h2>Лаборатория (экспериментально)</h2><ul class="small stack">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="small muted">Необязательные задания в браузере. Норм для взрослых в России нет, в индексы и критерии не входят. Пробы: Seli et al., 2015. Обесценивание: Du, Green & Myerson, 2002; AUC по Myerson et al., 2001.</p></section>`);
+        h.push(`<section class="block"><h2>Лаборатория (экспериментально)</h2><ul class="small stack">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="small muted">Необязательные задания в браузере. Норм для взрослых в России нет, в индексы и критерии не входят. Пробы: Seli et al., 2015. Обесценивание: Du, Green & Myerson, 2002; AUC по Myerson et al., 2001. Изменчивость реакции: Kofler et al., 2013. Интервалы: Marx et al., 2021. Нагрузка: Remington, Swettenham & Lavie, 2012. Навон: Navon, 1977; van der Hallen et al., 2015.</p></section>`);
         T.push("ЛАБОРАТОРИЯ (экспериментально, в подсчёт не входит)", ...tx, "");
       }
     }
