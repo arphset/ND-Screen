@@ -94,7 +94,7 @@ ND.clinician = (function () {
     return head + (short ? `${x.score}/${x.max}` : `${x.score} из ${x.max}`) + (x.d === "alexithymia" ? `, ${x.band} алекситимия` : `, ${x.band} степень`);
   }
 
-  function build(R) {
+  function build(R, lab) {
     const U = ND.UI, E = ND.scoring.evaluate(R), O = ND.scoring.overall(E), ST = U.ST_LABEL;
     const C = E.constructs, S = E.symptoms, asd = E.asd, adhd = E.adhd;
     const sc = Object.keys(ND.SCALES).map((k) => E.scales[k]).filter((x) => x.answered);
@@ -239,6 +239,24 @@ ND.clinician = (function () {
       const ar = MM.areas.map((x) => `${x.label.toLowerCase()} ${x.hidden}/${x.n}`).join(", ");
       h.push(`<section class="block"><h2>Карта масок (самоотчёт)</h2><p>Скрывает ${MM.hidden} из ${MM.n} признаков с ответом «видно ли со стороны», с усилием ${MM.effort}.</p><p class="small">По обстановке: ${esc(pl)}.<br>По сферам: ${esc(ar)}.</p><p class="small muted">Вопрос о видимости задан про признак в целом, а не про каждую обстановку, поэтому распределение приблизительное.</p></section>`);
       T.push("КАРТА МАСОК (самоотчёт)", `  Скрывает ${MM.hidden} из ${MM.n} признаков, с усилием ${MM.effort}`, `  По обстановке: ${pl}`, `  По сферам: ${ar}`, "");
+    }
+
+    // Лаборатория: необязательные мини-эксперименты, в подсчёт не входят
+    if (lab && ND.lab) {
+      const PS = ND.lab.probeSummary(lab.probes), DD = ND.lab.discount(lab.dd || {});
+      const rows = [], tx = [];
+      if (PS.enough) {
+        const line = `Пробы «где были мысли»: ${PS.rated} с ответом, не на задании ${PS.off} (${Math.round(PS.share * 100)}%, из них «пусто» ${PS.blank}); само ${PS.spont}, намеренно ${PS.delib}` + (PS.first != null ? `; первая половина ${Math.round(PS.first * 100)}%, вторая ${Math.round(PS.second * 100)}%` : "");
+        rows.push(line); tx.push("  " + line);
+      }
+      if (DD.complete) {
+        const line = `«Сейчас или потом» (подстройка суммы, 10 000 ₽, гипотетически): точки безразличия ${DD.points.map((p) => `${p.label.replace("через ", "")} ${p.ip} ₽`).join(", ")}; AUC ${DD.auc.toFixed(2)}` + (DD.jumps ? `; непоследовательных скачков: ${DD.jumps}` : "");
+        rows.push(line); tx.push("  " + line);
+      }
+      if (rows.length) {
+        h.push(`<section class="block"><h2>Лаборатория (экспериментально)</h2><ul class="small stack">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="small muted">Необязательные задания в браузере. Норм для взрослых в России нет, в индексы и критерии не входят. Пробы: Seli et al., 2015. Обесценивание: Du, Green & Myerson, 2002; AUC по Myerson et al., 2001.</p></section>`);
+        T.push("ЛАБОРАТОРИЯ (экспериментально, в подсчёт не входит)", ...tx, "");
+      }
     }
 
     // Темы для интервью

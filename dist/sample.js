@@ -64,3 +64,11 @@ ND.sampleResponses = function () {
     "HX-5": { h: [3, 5], rt: 6000 }, "HX-6": { h: [7], rt: 5000 }, "HX-7": { h: 1, rt: 4000 } });
   return R;
 };
+
+// «Лаборатория» для примера отчёта (v0.11): 6 проб «где были мысли» и задание «сейчас или потом». В подсчёт не входит.
+ND.sampleLab = function () {
+  return {
+    probes: [{ a: "task" }, { a: "other", how: "spont" }, { a: "task" }, { a: "other", how: "spont" }, { a: "blank" }, { a: "other", how: "delib" }],
+    dd: { w1: ["later", "later", "later", "now", "later"], m1: ["later", "later", "now", "now", "later"], m6: ["later", "now", "now", "later", "now"], y1: ["now", "later", "now", "now", "later"] },
+  };
+};

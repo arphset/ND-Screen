@@ -28,7 +28,9 @@
   for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (state.R[id] && state.R[id][p]) delete state.R[id][p].F;
   state.seen = state.seen || {}; state.breaks = state.breaks || [];
   // экраны «пример вопроса» и «машина времени» не могут быть сохранены как текущие: после перезагрузки начинаем с вопроса
-  if (state.view === "practice" || state.view === "recall" || state.view === "brk") state.view = "q";
+  if (state.view === "practice" || state.view === "recall" || state.view === "brk" || state.view === "probe") state.view = "q";
+  state.look = state.look || "default";
+  delete state.probeCur;
   let shownAt = Date.now();
   let confirmReset = false;
 
@@ -64,7 +66,13 @@
     else if (state.view === "recall") renderRecall();
     else if (state.view === "brk") renderBreak();
     else if (state.view === "clin") renderClin();
+    else if (state.view === "map") renderMap();
+    else if (state.view === "probe") renderProbe();
+    else if (state.view === "lab") renderLab();
+    else if (state.view === "sprite") renderSprite();
     else renderReport();
+    document.documentElement.dataset.look = lookOf();
+    syncMusic();
   }
 
   function renderIntro() {
@@ -88,13 +96,16 @@
           <li>«Скорее нет» значит, что это в целом не про вас: бывает слабо или лишь изредка. «Частично» значит, что это есть заметно, но не во всём или не всегда. Вопросы о том, где это проявляется, мешает ли и видно ли со стороны, появляются, только если сейчас выбрано хотя бы «частично». В них есть вариант «не знаю».</li>
           <li>Под каждым вопросом есть пояснение с примерами. Если вопрос всё равно непонятен или не про вас, есть кнопка «Неприменимо».</li>
           <li>В конце будет отдельный отчёт для специалиста: по критериям DSM-5-TR, с вашими ответами под каждым критерием.</li>
+          <li>Несколько раз по ходу анкеты появится короткий вопрос «Где были ваши мысли?», а после отчёта можно заглянуть в необязательную «Лабораторию». На баллы это не влияет.</li>
         </ul>
         <div class="row">
           <button class="btn primary" data-act="start">${done ? `Продолжить (отвечено ${done})` : "Начать анкету"}</button>
           <button class="btn" data-act="sample">Посмотреть пример отчёта</button>
           <button class="btn ghost" data-act="practice">Как отвечать: пример вопроса</button>
           ${done ? `<button class="btn ghost" data-act="report">Отчёт по текущим ответам</button>` : ""}
+          ${done ? `<button class="btn ghost" data-act="map">Карта анкеты</button>` : ""}
         </div>
+        ${lookBlock()}
       </div>`;
   }
 
@@ -207,14 +218,23 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
             </div>
           </div>
         </div>
-        <div class="row no-print"><button class="btn ghost small" data-act="home">На главную</button><button class="btn ghost small" data-act="report">Отчёт по текущим ответам</button></div>
+        <div class="row no-print"><button class="btn ghost small" data-act="home">На главную</button><button class="btn ghost small" data-act="map">Карта</button><button class="btn ghost small" data-act="report">Отчёт по текущим ответам</button>${CALM.has(it.sec) ? "" : musicCtl(true)}</div>
       </div>`;
   }
 
   // ───────── пиксельные картинки (src/pixels.js) ─────────
   const SEC_PIX = { social: "social", imag: "imag", routine: "routine", sensory: "sensory", camo: "camo", attention: "attention", activity: "activity",
     exec: "exec", life: "life", history: "history", mood: "mood", emo: "emo", burnout: "burnout", wellbeing: "wellbeing", health: "health", strengths: "strengths" };
-  const pix = (name, cls = "") => (ND.PIXELS && ND.PIXELS[name] ? `<img class="pix ${cls}" src="${ND.PIXELS[name]}" alt="" aria-hidden="true" width="120" height="60">` : "");
+  // Н14: тема картинок; Н22: поверх базовой картинки слой-анимация (полоса из 4 кадров, меняются только движущиеся пиксели)
+  const LOOKS = [["default", "Обычное"], ["space", "Космос"], ["trains", "Поезда"], ["ocean", "Океан"]];
+  const lookOf = () => (ND.PIXELS && ND.PIXELS[state.look] ? state.look : "default");
+  const pixOf = (th, name, cls = "", still = false) => {
+    const base = ND.PIXELS && ND.PIXELS[th] && ND.PIXELS[th][name];
+    if (!base) return "";
+    const an = !still && state.anim !== false && ND.PIXANIM && ND.PIXANIM[th] && ND.PIXANIM[th][name];
+    return `<span class="pix ${cls}" aria-hidden="true"><img src="${base}" alt="" width="120" height="60">${an ? `<i class="pix-anim" style="background-image:url(${an})"></i>` : ""}</span>`;
+  };
+  const pix = (name, cls = "", still = false) => pixOf(lookOf(), name, cls, still);
 
   // ───────── раннее развитие и семья: свои варианты ответа ─────────
   function histBlock(it, r) {
@@ -296,6 +316,228 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       </div>`;
   }
 
+  // ───────── v0.11: оформление, музыка, карта, пробы, лаборатория, спрайт ─────────
+  // Разделы PHQ-9, GAD-7 и ABSI проходят без игровых элементов: без музыки, персонажа и проб.
+  const CALM = new Set(["mood", "burnout"]);
+  const restore = () => { const x = load() || fresh(); x.seen = x.seen || {}; x.breaks = x.breaks || []; return x; };
+  const labState = () => ({ probes: state.probe && state.probe.list, dd: state.lab && state.lab.dd });
+  // в примере отчёта настройки оформления тоже сохраняем, но в настоящие ответы
+  function savePref() {
+    if (!state.sample) return;
+    const x = restore(); x.look = state.look; x.anim = state.anim; x.music = state.music; x.vol = state.vol;
+    try { localStorage.setItem(KEY, JSON.stringify(x)); } catch (e) {}
+  }
+
+  function musicCtl(small) {
+    if (!ND.music || !ND.music.supported()) return "";
+    return `<span class="music-ctl"><button class="${small ? "btn ghost small" : "chip"}" data-act="music" aria-pressed="${!!state.music}">♪ Музыка: ${state.music ? "вкл" : "выкл"}</button>${state.music ? `<input type="range" min="0" max="100" value="${Math.round((state.vol == null ? 0.5 : state.vol) * 100)}" data-act="vol" aria-label="Громкость музыки">` : ""}</span>`;
+  }
+  function syncMusic() {
+    if (!ND.music) return;
+    const inQ = ["q", "brk", "probe"].includes(state.view);
+    const sec = inQ ? ITEMS[state.idx].sec : state.view === "map" ? "map" : state.view === "intro" ? "intro" : null;
+    if (state.music && sec && !CALM.has(sec) && !state.sample) ND.music.play(sec); else ND.music.stop();
+  }
+
+  function lookBlock() {
+    return `<section class="look-set no-print"><h2>Оформление</h2>
+      <div class="looks">${LOOKS.map(([k, l]) => `<button class="look-btn" data-act="look" data-v="${k}" aria-pressed="${lookOf() === k}">${pixOf(k, "social", "pix-thumb", true)}<span>${l}</span></button>`).join("")}</div>
+      <div class="row"><button class="chip" data-act="anim" aria-pressed="${state.anim !== false}">Анимация картинок</button>${musicCtl()}<button class="chip" data-act="sprite">Мой персонаж</button></div>
+      <p class="small muted">Тема меняет картинки и цвет кнопок. Анимацию можно выключить; если в системе включено «уменьшить движение», картинки и так неподвижны. Музыка тихая, по умолчанию выключена и сама замолкает в разделах о настроении и выгорании.</p></section>`;
+  }
+
+  // ───────── Н13. Карта-путешествие ─────────
+  const shortTitle = (t) => t.replace(/\s*\(.*\)$/, "").replace(/:.*$/, "").replace(" за последние 2 недели", "");
+  function mapData() {
+    const cur = ITEMS[state.idx] && ITEMS[state.idx].sec;
+    return ND.SECTIONS.map((s) => { const xs = secOpen(s.id); return { s, n: xs.length, done: xs.filter(answered).length }; })
+      .filter((x) => x.n).map((x) => ({ ...x, st: x.done === x.n ? "done" : x.s.id === cur ? "cur" : x.done ? "part" : "todo" }));
+  }
+  const ST_MAP = { done: "пройдено", cur: "вы здесь", part: "начато", todo: "впереди" };
+  function mapBlock(compact) {
+    const D = mapData(), cols = compact ? Math.min(D.length, 8) : window.innerWidth < 600 ? 2 : 4, rows = Math.ceil(D.length / cols);
+    const pos = (k) => { const r = Math.floor(k / cols), c0 = k % cols; return [r, r % 2 ? cols - 1 - c0 : c0]; };
+    const pts = D.map((_, k) => { const [r, c] = pos(k); return `${(c + 0.5) * 100},${(r + 0.5) * 100}`; }).join(" ");
+    const tiles = D.map((x, k) => {
+      const [r, c] = pos(k), me = x.st === "cur" && !CALM.has(x.s.id);
+      return `<button class="mt ${x.st}" data-act="map-go" data-sec="${x.s.id}" style="grid-row:${r + 1};grid-column:${c + 1}" title="${esc(x.s.title)}: ${x.done} из ${x.n}" aria-label="${k + 1}. ${esc(x.s.title)}, ${ST_MAP[x.st]}, ${x.done} из ${x.n}">
+        ${pix(SEC_PIX[x.s.id] || "break", "pix-tile", true)}
+        ${me ? `<img class="mt-me" src="${spriteURL()}" alt="">` : ""}
+        ${x.st === "done" ? `<span class="mt-ok" aria-hidden="true">✓</span>` : ""}
+        ${compact ? "" : `<span class="mt-t"><b>${k + 1}.</b> ${esc(shortTitle(x.s.title))}</span><span class="mt-s small muted">${ST_MAP[x.st]} · ${x.done}/${x.n}</span>`}
+      </button>`;
+    }).join("");
+    return `<div class="map ${compact ? "compact" : ""}" style="--cols:${cols}">
+      <svg class="map-path" viewBox="0 0 ${cols * 100} ${rows * 100}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts}" vector-effect="non-scaling-stroke"/></svg>${tiles}</div>`;
+  }
+  function renderMap() {
+    const D = mapData(), done = D.filter((x) => x.st === "done").length;
+    app.innerHTML = `<div class="wrap wide">
+      <span class="eyebrow">Карта анкеты · пройдено разделов ${done} из ${D.length}</span>
+      <h1>Карта</h1>
+      <p class="muted">Каждая клетка — раздел анкеты. Нажмите на любой, чтобы перейти к его первому вопросу без ответа. Ответы сохраняются, порядок можно менять.</p>
+      ${mapBlock(false)}
+      <div class="row no-print"><button class="btn primary" data-act="resume">Вернуться к вопросам</button><button class="btn" data-act="sprite">Мой персонаж</button><button class="btn ghost" data-act="report">Отчёт по текущим ответам</button>${musicCtl(true)}</div>
+    </div>`;
+  }
+
+  // ───────── Н9. «Где были ваши мысли?» ─────────
+  function probeDue(it, j) {
+    if (state.sample || state.probesOff || !ND.lab) return 0;
+    if (!ND.lab.PROBE_SECS.includes(it.sec) || ITEMS[j].sec !== it.sec) return 0;
+    const P = state.probe || (state.probe = { seed: Math.floor(Math.random() * 1e9), list: [] });
+    const core = openItems().filter((x) => ND.lab.PROBE_SECS.includes(x.sec)), n = core.filter(answered).length;
+    const due = ND.lab.probeSchedule(P.seed, core.length).filter((t) => t <= n).length;
+    return due > P.list.length ? due : 0;
+  }
+  function finishProbe(x) {
+    const P = state.probe || (state.probe = { seed: 1, list: [] });
+    P.list.push({ a: x.a, how: x.how, sec: ITEMS[state.idx].sec, n: openItems().filter(answered).length });
+    delete state.probeCur; state.view = "q"; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0);
+  }
+  function renderProbe() {
+    const P = state.probe || { list: [] }, k = P.list.filter((x) => x.a !== "missed").length + 1, cur = state.probeCur || {};
+    const ok = cur.a && (cur.a !== "other" || cur.how);
+    app.innerHTML = `<div class="wrap"><div class="card probe">
+      ${pix("attention", "pix-q")}
+      <span class="eyebrow">Мини-эксперимент · ${Math.min(k, ND.lab.PROBE_N)} из ${ND.lab.PROBE_N}</span>
+      <h2>Где только что были ваши мысли?</h2>
+      <p class="muted">Вспомните последние секунды перед этим экраном, пока вы читали вопрос и отвечали.</p>
+      ${k === 1 ? `<p class="small muted">Такой вопрос появится несколько раз в случайный момент. Мысли уходят в сторону у всех, так что честный ответ здесь важнее «правильного». На баллы это не влияет: итог будет в отчёте, в блоке «Лаборатория».</p>` : ""}
+      <div class="hist-opts">${ND.lab.PROBE_OPTS.map(([v, l]) => `<button class="opt" data-act="probe-a" data-v="${v}" aria-pressed="${cur.a === v}">${l}</button>`).join("")}</div>
+      ${cur.a === "other" ? `<fieldset class="period"><legend>Мысли ушли сами или вы решили подумать о другом?</legend>
+        <div class="hist-opts">${ND.lab.PROBE_HOW.map(([v, l]) => `<button class="opt" data-act="probe-how" data-v="${v}" aria-pressed="${cur.how === v}">${l}</button>`).join("")}</div></fieldset>` : ""}
+      <div class="nav"><button class="btn ghost" data-act="probe-off">Больше не спрашивать</button>
+        <div class="row"><button class="btn" data-act="probe-skip">Пропустить</button><button class="btn primary" data-act="probe-done" ${ok ? "" : "disabled"}>Дальше</button></div></div>
+    </div></div>`;
+  }
+
+  // ───────── Н10. Лаборатория: «Сейчас или потом» ─────────
+  const rub = (x) => Math.round(x).toLocaleString("ru-RU") + " ₽";
+  function probeHtml(PS) {
+    if (!PS.n) return state.probesOff ? `<p class="small muted">Вопросы «Где были ваши мысли?» вы отключили.</p>` : `<p class="small muted">Вопросы «Где были ваши мысли?» появятся по ходу основной части анкеты.</p>`;
+    if (!PS.enough) return `<p class="small muted">Вопросов «Где были ваши мысли?» с ответом пока ${PS.rated}. Итог появится после трёх.</p>`;
+    const pc = (x) => Math.round(x * 100) + "%";
+    return `<h3>Где были ваши мысли</h3>
+      <p>Мысли были не на вопросе в <b>${PS.off} из ${PS.rated}</b> проверок (${pc(PS.share)})${PS.blank ? `, из них «пусто в голове» ${PS.blank}` : ""}.
+      ${PS.spont + PS.delib ? `Когда мысли уходили к другому: само — ${PS.spont}, сознательно — ${PS.delib}.` : ""}
+      ${PS.first != null ? `В первой половине анкеты ${pc(PS.first)}, во второй ${pc(PS.second)}${PS.second - PS.first >= 0.25 ? ": к концу отвлечений стало заметно больше, так обычно проявляется усталость" : ""}.` : ""}</p>
+      <p class="small muted">Для ориентира: в исследовании с такими же внезапными вопросами в обычной жизни мысли были не на текущем деле примерно в 47% случаев (Killingsworth & Gilbert, 2010). В анкете условия другие, а проверок всего несколько, поэтому это наблюдение, а не измерение. В выборке студентов с разной выраженностью признаков СДВГ с ними было связано именно непроизвольное блуждание мыслей, а намеренное нет (Seli et al., 2015). Для взрослых с СДВГ есть отдельный опросник «избыточного блуждания мыслей» MEWS (Mowlem et al., 2019), на русский он официально не переведён.</p>`;
+  }
+  function ddChart(D) {
+    const W = 320, H = 170, x = (d) => 36 + (d / 365) * (W - 50), y = (v) => 14 + (1 - v / ND.lab.LATER) * (H - 44);
+    const pts = [{ days: 0, ip: ND.lab.LATER }, ...D.points];
+    return `<svg class="dd-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Сколько стоят для вас 10 000 ₽ через разное время">
+      <line x1="36" y1="${y(ND.lab.LATER)}" x2="${W - 14}" y2="${y(ND.lab.LATER)}" class="ref"/>
+      <line x1="36" y1="${y(0)}" x2="${W - 14}" y2="${y(0)}" class="axis"/>
+      ${[0, 5000, 10000].map((v) => `<text x="30" y="${y(v) + 4}" text-anchor="end">${v / 1000}к</text>`).join("")}
+      ${[[0, "сегодня"], [30, "1 мес"], [182, "6 мес"], [365, "1 год"]].map(([dd, l], i) => `<text x="${x(dd)}" y="${H - 12}" text-anchor="${i ? (i === 3 ? "end" : "middle") : "start"}">${l}</text>`).join("")}
+      <polygon points="${x(0)},${y(0)} ${pts.map((p) => `${x(p.days)},${y(p.ip)}`).join(" ")} ${x(365)},${y(0)}" class="area"/>
+      <polyline points="${pts.map((p) => `${x(p.days)},${y(p.ip)}`).join(" ")}" class="curve"/>
+      ${D.points.map((p) => `<circle cx="${x(p.days)}" cy="${y(p.ip)}" r="4"/>`).join("")}
+    </svg>`;
+  }
+  function ddHtml(D, full) {
+    if (!D.complete) return "";
+    const a = D.auc;
+    const words = a >= 0.8 ? "Вы почти не обесцениваете отложенные деньги: ожидание мало что у них отнимает." : a >= 0.5 ? "Ожидание заметно уменьшает для вас ценность денег, но не обнуляет её." : "Отложенные деньги для вас сильно теряют в цене: синица в руках заметно важнее.";
+    return `<h3>Сейчас или потом</h3>
+      <div class="dd">${ddChart(D)}<div><p>Площадь под кривой: <b class="mono">${a.toFixed(2).replace(".", ",")}</b> из 1. ${words}</p>
+      <p class="small">Сколько для вас стоят 10 000 ₽: ${D.points.map((p) => `${p.label} ≈ ${rub(p.ip)}`).join("; ")}.</p></div></div>
+      ${D.jumps ? `<p class="small muted">При большем сроке вы иногда соглашались на большую сумму, чем при меньшем. Так бывает при невнимательном выборе, поэтому результат менее надёжен (критерий Johnson & Bickel, 2008).</p>` : ""}
+      ${full ? `<p class="small muted">Норм для взрослых в России нет, поэтому сравнить с «обычным» значением нельзя. В метаанализе у людей с СДВГ предпочтение немедленной награды в среднем умеренно сильнее, чем без СДВГ (Jackson & MacKillop, 2016), но разброс между людьми большой, и по одному результату ничего сказать нельзя. Выбор зависит и от инфляции, доверия к обещаниям и того, насколько сейчас нужны деньги. Методика: подстройка суммы (Du, Green & Myerson, 2002), площадь под кривой (Myerson, Green & Warusawitharana, 2001); гипотетические и реальные деньги дают близкие результаты (Johnson & Bickel, 2002).</p>` : ""}`;
+  }
+  function labBlock() {
+    if (!ND.lab) return "";
+    const PS = ND.lab.probeSummary(state.probe && state.probe.list), D = ND.lab.discount((state.lab || {}).dd || {});
+    return `<section class="block lab-block"><h2>Лаборатория <span class="tag">эксперимент</span></h2>
+      <p class="muted">Необязательные мини-задания. Они не входят в баллы, критерии и общий вывод: это любопытные наблюдения, а не тесты с нормами.</p>
+      ${probeHtml(PS)}
+      ${D.complete ? ddHtml(D, false) : `<p class="small">Задание «Сейчас или потом»: 20 выборов между деньгами сегодня и позже, около 2 минут.</p>`}
+      <div class="row no-print"><button class="btn" data-act="lab">${D.complete ? "Подробнее о «Сейчас или потом»" : "Открыть лабораторию"}</button></div></section>`;
+  }
+  function renderLab() {
+    const L = state.lab || { dd: {} }, t = state.sample ? null : ND.lab.nextTrial(L.dd), D = ND.lab.discount(L.dd || {});
+    const total = ND.lab.DELAYS.length * ND.lab.STEPS, made = Object.values(L.dd || {}).reduce((a, x) => a + x.length, 0);
+    const back = `<button class="btn ghost" data-act="lab-back">Назад</button>`;
+    let body;
+    if (t && !L.started && !made) {
+      body = `<h1>Сейчас или потом</h1>
+        <p>Представьте, что вам предлагают деньги. Можно взять сумму сегодня или 10 000 ₽ позже. Каждый раз выбирайте то, что выбрали бы на самом деле. Правильных ответов нет.</p>
+        <p class="muted small">20 выборов, около 2 минут. Сумма «сегодня» подстраивается под ваши ответы, чтобы найти, сколько для вас стоят деньги через неделю, месяц, полгода и год. Это необязательное задание, в баллы оно не входит.</p>
+        <div class="nav">${back}<button class="btn primary" data-act="lab-start">Начать</button></div>`;
+    } else if (t) {
+      body = `<span class="eyebrow">Выбор ${made + 1} из ${total}</span>
+        <div class="bar"><i style="width:${Math.round((made / total) * 100)}%"></i></div>
+        <h2>Что вы выберете?</h2>
+        <div class="dd-choice">
+          <button class="dd-opt" data-act="lab-c" data-v="now"><b>${rub(t.now)}</b><span>сегодня</span></button>
+          <button class="dd-opt" data-act="lab-c" data-v="later"><b>${rub(ND.lab.LATER)}</b><span>${esc(t.delay.label)}</span></button>
+        </div>
+        <p class="small muted">Представьте, что деньги настоящие и обе выплаты гарантированы.</p>
+        <div class="nav">${back}</div>`;
+    } else {
+      body = `<h1>Лаборатория</h1>
+        ${D.complete ? ddHtml(D, true) : `<p class="muted">В примере отчёта задание пройти нельзя. Начните анкету, чтобы пройти его самому.</p>`}
+        ${probeHtml(ND.lab.probeSummary(state.probe && state.probe.list))}
+        <div class="nav">${back}${state.sample ? "" : `<button class="btn" data-act="lab-reset">Пройти «Сейчас или потом» заново</button>`}</div>`;
+    }
+    app.innerHTML = `<div class="wrap"><div class="card lab">${pix("strengths", "pix-q")}${body}</div></div>`;
+  }
+
+  // ───────── Н15. Мой персонаж ─────────
+  let spriteCache = {};
+  let suggestCache = null;
+  function spriteSuggest() {
+    const key = JSON.stringify(state.R);
+    if (!suggestCache || suggestCache.key !== key) { let s = []; try { s = ND.sprite.suggest(ND.scoring.evaluate(state.R)); } catch (e) {} suggestCache = { key, s }; }
+    return suggestCache.s;
+  }
+  function spriteLook() {
+    const L = { ...ND.sprite.DEFAULT, ...(state.sprite || {}) };
+    if (!Array.isArray(L.acc)) L.acc = spriteSuggest().map((x) => x[0]);
+    return L;
+  }
+  function spriteURL(scale = 3) {
+    const L = spriteLook(), k = JSON.stringify(L) + scale;
+    return spriteCache[k] || (spriteCache[k] = ND.sprite.dataURL(L, scale));
+  }
+  const LOOK_BG = { default: "#dce8f2", space: "#2b3160", trains: "#f0dcc0", ocean: "#cfeaf2" };
+  function spritePNG() {
+    const s = ND.sprite.draw(document.createElement("canvas"), spriteLook(), 12), c = document.createElement("canvas");
+    c.width = c.height = 480; const g = c.getContext("2d"); g.imageSmoothingEnabled = false;
+    g.fillStyle = LOOK_BG[lookOf()]; g.fillRect(0, 0, 480, 480);
+    g.fillStyle = "rgba(0,0,0,0.12)"; g.fillRect(0, 400, 480, 80); g.beginPath(); g.ellipse(240, 420, 110, 14, 0, 0, Math.PI * 2); g.fill();
+    g.drawImage(s, 48, 48);
+    return c.toDataURL("image/png");
+  }
+  function spriteBlock() {
+    if (!ND.sprite) return "";
+    return `<section class="block no-print"><div class="row-pix"><img class="sprite-mini" src="${spriteURL(3)}" alt="Ваш пиксельный персонаж">
+      <div><h2>Мой персонаж</h2><p class="small muted">Пиксельный персонаж, которого можно собрать под себя и сохранить картинкой. Предметы в руках подсказаны ответами, но их можно поменять. Никаких диагнозов на картинке нет.</p>
+      <button class="btn" data-act="sprite">Собрать персонажа</button></div></div></section>`;
+  }
+  function renderSprite() {
+    const L = spriteLook(), sug = spriteSuggest(), why = Object.fromEntries(sug);
+    const sw = (k, list) => `<div class="swatches">${list.map((c, i) => `<button class="sw-btn" data-act="sp" data-k="${k}" data-v="${i}" aria-pressed="${L[k] === i}" style="background:${ND.sprite.rgb(c)}" aria-label="Вариант ${i + 1}"></button>`).join("")}</div>`;
+    app.innerHTML = `<div class="wrap"><div class="card sprite-ed">
+      <h1>Мой персонаж</h1>
+      <div class="sprite-stage"><canvas id="sprite-cv" width="256" height="256" aria-label="Ваш персонаж"></canvas></div>
+      <fieldset class="period"><legend>Кожа</legend>${sw("skin", ND.sprite.SKIN)}</fieldset>
+      <fieldset class="period"><legend>Волосы</legend>${sw("hair", ND.sprite.HAIR)}
+        <div class="chips">${ND.sprite.STYLES.map(([v, l]) => `<button class="chip" data-act="sp" data-k="style" data-v="${v}" aria-pressed="${L.style === v}">${l}</button>`).join("")}</div></fieldset>
+      <fieldset class="period"><legend>Одежда</legend>${sw("shirt", ND.sprite.SHIRT)}</fieldset>
+      <fieldset class="period"><legend>Предметы</legend>
+        <div class="chips">${ND.sprite.ACC.map(([v, l]) => `<button class="chip" data-act="sp" data-k="acc" data-v="${v}" aria-pressed="${L.acc.includes(v)}">${l}${why[v] ? " ★" : ""}</button>`).join("")}</div>
+        ${sug.length ? `<p class="small muted">★ подсказано ответами: ${sug.map(([v, w]) => `${esc(ND.sprite.ACC.find((x) => x[0] === v)[1].toLowerCase())} (${esc(w)})`).join("; ")}. ${state.sprite && Array.isArray(state.sprite.acc) ? `<button class="linkish" data-act="sp-auto">Вернуть подсказки</button>` : ""}</p>` : `<p class="small muted">Когда ответов станет больше, здесь появятся подсказки по ним.</p>`}
+      </fieldset>
+      <div class="nav"><button class="btn" data-act="sp-dl">Скачать картинку</button><button class="btn primary" data-act="sp-done">Готово</button></div>
+    </div></div>`;
+    const cv = document.getElementById("sprite-cv");
+    if (cv) ND.sprite.draw(cv, L, 8);
+  }
+
+
   // ───────── остановка между разделами (10) ─────────
   const secOpen = (sid) => openItems().filter((x) => x.sec === sid);
   function minutesLeft() {
@@ -318,7 +560,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           ${pix(SEC_PIX[next.sec] || "break", "pix-wide")}
           <span class="eyebrow">Готово разделов: ${doneSecs} из ${secs.length}</span>
           <h2>Раздел «${esc(prev.title || "")}» готов</h2>
-          <div class="bar"><i style="width:${Math.round((doneSecs / secs.length) * 100)}%"></i></div>
+          ${mapBlock(true)}
           <p>Дальше: <b>${esc(nsec.title)}</b>. По вашему темпу осталось примерно <b>${T.min} мин</b> (${T.left} вопр.${ITEMS.some((x) => x.fu && !open(x) && ITEMS.indexOf(x) > state.idx) ? ", плюс уточняющие, если понадобятся" : ""}).</p>
           ${tip ? `<div class="recall-tip">${pix("school", "pix-mini")}<span><b>Перед ответами о детстве.</b> ${esc(tip)}</span></div>` : ""}
           <p class="small muted">Все ответы сохранены в этом браузере. Можно сделать перерыв и вернуться позже: анкета продолжится с этого места.</p>
@@ -454,6 +696,10 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
 
         ${historyBlock(ND.insights.history(state.R))}
 
+        ${labBlock()}
+
+        ${spriteBlock()}
+
         ${E.differential.length ? `<section class="block"><h2>Что стоит учесть</h2>
           ${E.differential.map((d) => `<div class="flag"><b>${esc(d.label)}${d.lateOnset ? ", началось не в детстве" : ""}</b><span>${esc(d.note)}</span></div>`).join("")}
         </section>` : ""}
@@ -488,6 +734,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         <div class="row no-print">
           ${state.sample ? `<button class="btn primary" data-act="home">Вернуться и начать анкету</button>` : `<button class="btn primary" data-act="resume">Вернуться к вопросам</button>`}
           <button class="btn" data-act="clin">Отчёт для специалиста</button>
+          <button class="btn" data-act="lab">Лаборатория</button>
           <button class="btn" data-act="copy-summary">Скопировать сводку</button>
           <button class="btn" data-act="export">${embedded ? "Показать данные (JSON)" : "Скачать данные (JSON)"}</button>
           ${embedded ? "" : `<button class="btn" data-act="print">Печать или PDF</button>`}
@@ -675,7 +922,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   }
 
   function renderClin() {
-    const C = ND.clinician.build(state.R);
+    const C = ND.clinician.build(state.R, labState());
     app.innerHTML = `<div class="wrap wide clin">
       <div class="row no-print"><button class="btn" data-act="report">Назад к отчёту</button>
         <button class="btn" data-act="clin-copy">Скопировать текстом</button>
@@ -807,7 +1054,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         { const first = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = first === -1 ? 0 : first; }
         shownAt = Date.now(); save(); render(); return;
       case "resume": state.view = "q"; if (!open(ITEMS[state.idx])) state.idx = Math.max(0, nextOpen(state.idx, -1)); shownAt = Date.now(); save(); render(); return;
-      case "sample": state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [] }; render(); window.scrollTo(0, 0); return;
+      case "sample": { const L = ND.sampleLab(), look = state.look, anim = state.anim; state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [], probe: { seed: 1, list: L.probes }, lab: { dd: L.dd }, look, anim }; render(); window.scrollTo(0, 0); return; }
       case "practice": if (state.sample) state = load() || fresh(); state.view = "practice"; state.seen = state.seen || {}; state.breaks = state.breaks || []; save(); render(); window.scrollTo(0, 0); return;
       case "practice-skip": case "practice-done": {
         state.seen.practice = true; delete state.prR;
@@ -832,6 +1079,43 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         else h = only.includes(v) ? [v] : h.filter((x) => !only.includes(x)).concat(v);
         r.h = h.sort((a, b) => a - b); break;
       }
+      case "look": state.look = b.dataset.v; savePref(); break;
+      case "anim": state.anim = state.anim === false; savePref(); break;
+      case "music": state.music = !state.music; if (ND.music) ND.music.setVolume(state.vol == null ? 0.5 : state.vol); savePref(); break;
+      case "map": if (state.sample) state = restore(); state.view = "map"; save(); render(); window.scrollTo(0, 0); return;
+      case "map-go": {
+        if (state.sample) return;
+        const xs = ITEMS.map((x, i) => [x, i]).filter(([x]) => x.sec === b.dataset.sec && open(x));
+        const f = xs.find(([x]) => !answered(x)) || xs[0];
+        if (!f) return;
+        state.view = "q"; state.idx = f[1]; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return;
+      }
+      case "probe-a": state.probeCur = { a: b.dataset.v }; render(); return;
+      case "probe-how": state.probeCur = { ...(state.probeCur || {}), how: b.dataset.v }; render(); return;
+      case "probe-done": finishProbe(state.probeCur || { a: "skip" }); return;
+      case "probe-skip": finishProbe({ a: "skip" }); return;
+      case "probe-off": state.probesOff = true; finishProbe({ a: "skip" }); toast("Больше не спросим"); return;
+      case "lab": state.labBack = state.view === "lab" ? state.labBack : state.view; state.view = "lab"; if (!state.sample) save(); render(); window.scrollTo(0, 0); return;
+      case "lab-start": (state.lab = state.lab || { dd: {} }).started = true; save(); render(); return;
+      case "lab-c": {
+        if (state.sample) return;
+        const L = state.lab || (state.lab = { dd: {} }), t = ND.lab.nextTrial(L.dd);
+        if (!t) return;
+        (L.dd[t.delay.key] = L.dd[t.delay.key] || []).push(b.dataset.v === "now" ? "now" : "later");
+        save(); render(); return;
+      }
+      case "lab-reset": if (state.sample) return; state.lab = { dd: {}, started: true }; save(); render(); return;
+      case "lab-back": state.view = state.labBack && state.labBack !== "lab" ? state.labBack : "report"; save(); render(); window.scrollTo(0, 0); return;
+      case "sprite": state.spriteBack = state.view === "sprite" ? state.spriteBack : state.view; state.view = "sprite"; if (!state.sample) save(); render(); window.scrollTo(0, 0); return;
+      case "sp": {
+        const k = b.dataset.k, L = (state.sprite = { ...ND.sprite.DEFAULT, ...(state.sprite || {}) });
+        if (k === "acc") { const a = new Set(spriteLook().acc); a.has(b.dataset.v) ? a.delete(b.dataset.v) : a.add(b.dataset.v); L.acc = [...a]; }
+        else L[k] = k === "style" ? b.dataset.v : +b.dataset.v;
+        spriteCache = {}; break;
+      }
+      case "sp-auto": if (state.sprite) state.sprite.acc = null; spriteCache = {}; break;
+      case "sp-dl": { const a = document.createElement("a"); a.href = spritePNG(); a.download = "moi-personazh.png"; a.click(); return; }
+      case "sp-done": state.view = state.spriteBack && state.spriteBack !== "sprite" ? state.spriteBack : "report"; save(); render(); window.scrollTo(0, 0); return;
       case "home": if (state.sample) state = load() || fresh(); state.view = "intro"; save(); render(); return;
       case "report": state.view = "report"; save(); render(); window.scrollTo(0, 0); return;
       case "goto": { const i = ITEMS.findIndex((x) => x.id === b.dataset.id); if (i < 0) return; state.view = "q"; state.idx = i; shownAt = Date.now(); save(); render(); window.scrollTo(0, 0); return; }
@@ -856,6 +1140,9 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
         if (j === -1) { go(-1); state.view = "report"; save(); render(); window.scrollTo(0, 0); return; }
         // переход в новый раздел: экран-остановка (один раз на раздел)
         if (ITEMS[j].sec !== it.sec && !state.breaks.includes(it.sec)) { state.breaks.push(it.sec); go(j); state.view = "brk"; save(); render(); return; }
+        // Н9: проба «где были мысли» внутри раздела, не на границе
+        const due = probeDue(it, j);
+        if (due) { const P = state.probe; while (P.list.length < due - 1) P.list.push({ a: "missed" }); go(j); state.view = "probe"; save(); render(); window.scrollTo(0, 0); return; }
         go(j); return;
       }
       case "copy-summary": {
@@ -865,7 +1152,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       }
       case "export": {
         const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R),
-          comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })) }, null, 2);
+          comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })),
+          lab: { note: "экспериментально, в баллы и критерии не входит", probes: labState().probes || [], probeSummary: ND.lab.probeSummary(labState().probes), discount: ND.lab.discount(labState().dd || {}) } }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));
@@ -884,7 +1172,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       }
       case "clin": state.view = "clin"; save(); render(); window.scrollTo(0, 0); return;
       case "clin-copy": {
-        const txt = ND.clinician.build(state.R).text;
+        const txt = ND.clinician.build(state.R, labState()).text;
         navigator.clipboard.writeText(txt).then(() => toast("Отчёт скопирован"), () => showBox(txt));
         return;
       }
@@ -904,6 +1192,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
   app.addEventListener("change", (e) => {
   });
   app.addEventListener("input", (e) => {
+    if (e.target.dataset.act === "vol") { state.vol = +e.target.value / 100; if (ND.music) ND.music.setVolume(state.vol); save(); return; }
     if (e.target.dataset.act === "text") {
       if (state.view === "practice") { pr()[e.target.dataset.p].text = e.target.value; return; }
       const it = ITEMS[state.idx], r = resp(it.id);

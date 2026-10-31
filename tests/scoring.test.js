@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js", "insights.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js", "insights.js", "lab.js", "sprite.js", "music.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -550,6 +550,47 @@ check("нет пояснений к несуществующим вопроса�
   check("одинаковое пояснение о речи показывается один раз", H1.notes.length === 1 && H1.notes[0].key === "speech");
   const S = ND.sampleResponses(), C = ND.clinician.build(S);
   check("в отчёте для специалиста есть раннее развитие и карта масок", /РАННЕЕ РАЗВИТИЕ И СЕМЬЯ/.test(C.text) && /КАРТА МАСОК/.test(C.text));
+}
+
+
+// ── v0.11: лаборатория (пробы, «сейчас или потом»), персонаж, музыка ──
+{
+  const L = ND.lab;
+  // расписание проб: детерминировано, по возрастанию, внутри анкеты
+  for (const seed of [1, 7, 12345, 999999]) for (const total of [60, 120, 176]) {
+    const a = L.probeSchedule(seed, total), b = L.probeSchedule(seed, total);
+    check(`пробы: расписание ${seed}/${total} стабильно и возрастает`, JSON.stringify(a) === JSON.stringify(b) && a.every((x, i) => (!i || x > a[i - 1]) && x >= 4 && x < total) && a.length >= L.PROBE_N - 1, a);
+  }
+  const PS = L.probeSummary([{ a: "task" }, { a: "other", how: "spont" }, { a: "missed" }, { a: "skip" }, { a: "blank" }, { a: "unsure" }, { a: "other", how: "delib" }, { a: "task" }]);
+  check("пробы: сводка считает только ответы, «не могу сказать» не в доле", PS.n === 6 && PS.rated === 5 && PS.off === 3 && Math.abs(PS.share - 0.6) < 1e-9 && PS.spont === 1 && PS.delib === 1 && PS.blank === 1 && PS.enough, PS);
+  check("пробы: меньше трёх ответов — итога нет", !L.probeSummary([{ a: "task" }, { a: "other" }]).enough);
+  // подстройка суммы: всегда «сейчас» -> к нулю, всегда «потом» -> к 10 000
+  const all = (c) => Object.fromEntries(L.DELAYS.map((d) => [d.key, Array(L.STEPS).fill(c)]));
+  const Dn = L.discount(all("now")), Dl = L.discount(all("later"));
+  check("сейчас-или-потом: всегда «сейчас» даёт малые точки и малую AUC", Dn.complete && Dn.points.every((p) => p.ip < 200) && Dn.auc < 0.05, Dn);
+  check("сейчас-или-потом: всегда «потом» даёт AUC около 1", Dl.complete && Dl.points.every((p) => p.ip > 9800) && Dl.auc > 0.97, Dl);
+  check("сейчас-или-потом: первое предложение 5000, затем ±2500", L.offer([]) === 5000 && L.offer(["now"]) === 2500 && L.offer(["later"]) === 7500 && L.offer(["later", "now"]) === 6250);
+  check("сейчас-или-потом: AUC прямой линии от 1 до 0 равна 0,5", Math.abs(L.auc([{ days: 365, rel: 0 }]) - 0.5) < 1e-9);
+  let tr = L.nextTrial({}), cnt = 0; const ans = {};
+  while (tr && cnt < 100) { (ans[tr.delay.key] = ans[tr.delay.key] || []).push(cnt % 3 ? "later" : "now"); cnt++; tr = L.nextTrial(ans); }
+  check("сейчас-или-потом: ровно 20 выборов", cnt === L.DELAYS.length * L.STEPS, cnt);
+  const SL = ND.sampleLab(), SD = L.discount(SL.dd);
+  check("пример лаборатории: кривая убывает, без скачков", SD.complete && SD.points.every((p, i) => !i || p.ip <= SD.points[i - 1].ip) && SD.jumps === 0 && SD.auc > 0 && SD.auc < 1, SD);
+  check("скачок по Johnson & Bickel находится", L.discount({ w1: Array(5).fill("now"), m1: Array(5).fill("later"), m6: Array(5).fill("later"), y1: Array(5).fill("later") }).jumps === 1);
+  // лаборатория не трогает баллы: evaluate не видит её данных, отчёт специалиста только дописывает раздел
+  const S = ND.sampleResponses(), E1 = ND.scoring.evaluate(S), C0 = ND.clinician.build(S), C1 = ND.clinician.build(S, SL);
+  check("лаборатория попадает в отчёт специалиста как отдельный раздел", /ЛАБОРАТОРИЯ/.test(C1.text) && !/ЛАБОРАТОРИЯ/.test(C0.text) && C1.text.replace(/ЛАБОРАТОРИЯ[\s\S]*?\n\n/, "") === C0.text);
+  check("лаборатория не меняет evaluate", JSON.stringify(ND.scoring.evaluate(S)) === JSON.stringify(E1));
+  // персонаж
+  const G = ND.sprite.grid({}), G2 = ND.sprite.grid({ style: "long", hair: 3, skin: 2, shirt: 4, acc: ND.sprite.ACC.map((x) => x[0]) });
+  check("персонаж: сетка 32×32 из цветов или пустоты", [G, G2].every((g) => g.length === 32 && g.every((r) => r.length === 32 && r.every((c) => c === null || (Array.isArray(c) && c.length === 3 && c.every((v) => v >= 0 && v <= 255))))));
+  check("персонаж: предметы меняют картинку", JSON.stringify(G) !== JSON.stringify(G2));
+  const sug = ND.sprite.suggest(E1);
+  check("персонаж: подсказки — известные предметы, без слов РАС/СДВГ", sug.every(([k, w]) => ND.sprite.ACC.some((x) => x[0] === k) && !/РАС|СДВГ|аутизм/i.test(w)) && sug.length > 0, sug);
+  check("персонаж: у пустых ответов подсказок нет", ND.sprite.suggest(ND.scoring.evaluate({})).length === 0);
+  // музыка: петля детерминирована и в пентатонике
+  const m1 = ND.music.makeLoop(ND.music.hash("social")), m2 = ND.music.makeLoop(ND.music.hash("social"));
+  check("музыка: петля одинакова для раздела, 16 шагов, 4 баса", JSON.stringify(m1) === JSON.stringify(m2) && m1.mel.length === 16 && m1.bass.length === 4);
 }
 
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
