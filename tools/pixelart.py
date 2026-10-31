@@ -19,18 +19,34 @@ PAL = {
     "glass": (170, 214, 236), "glass2": (130, 184, 216), "screen": (96, 200, 210), "lamp": (255, 236, 160),
 }
 
+# Тема оформления и номер кадра анимации задаются перед отрисовкой сцены (см. render).
+G = {"theme": "default", "f": 0}
+F = lambda: G["f"]
+bob = lambda i=0: (G["f"] + i) % 2
+THEMES = {
+    "default": {},
+    "space": {"wall": (44, 48, 86), "wall2": (56, 62, 104), "wallg": (40, 56, 78), "wallg2": (52, 70, 96), "wallb": (38, 44, 82), "wallb2": (50, 58, 104),
+              "floor": (122, 130, 150), "floor2": (98, 106, 126), "sky1": (18, 22, 50), "sky2": (30, 36, 80), "sky3": (54, 58, 116),
+              "ground": (150, 150, 172), "ground2": (112, 112, 134), "ground3": (182, 182, 198)},
+    "ocean": {"wall": (216, 238, 236), "wall2": (192, 222, 224), "wallg": (204, 234, 226), "wallg2": (178, 216, 206), "wallb": (200, 226, 242), "wallb2": (174, 206, 232),
+              "floor": (232, 208, 160), "floor2": (210, 182, 132), "ground": (234, 212, 160), "ground2": (206, 180, 128), "ground3": (244, 228, 188)},
+    "trains": {"wall": (240, 220, 190), "wall2": (220, 184, 150), "wallg": (226, 222, 196), "wallg2": (204, 196, 160), "wallb": (222, 214, 228), "wallb2": (198, 184, 206)},
+}
+GROUND = {"ground": (104, 176, 98), "ground2": (66, 132, 80), "ground3": (150, 206, 120)}
+
 class C:
     def __init__(s, bg="wall"):
-        s.im = Image.new("RGBA", (W, H), PAL[bg] + (255,) if bg else (0, 0, 0, 0)); s.p = s.im.load()
+        s.im = Image.new("RGBA", (W, H), (0, 0, 0, 0)); s.p = s.im.load()
+        if bg: s.rect(0, 0, W, H, bg)
     def px(s, x, y, c):
         if 0 <= x < W and 0 <= y < H and c:
-            col = PAL[c] if isinstance(c, str) else c
+            col = (THEMES[G["theme"]].get(c) or PAL.get(c) or GROUND[c]) if isinstance(c, str) else c
             s.p[int(x), int(y)] = col + (255,) if len(col) == 3 else col
     def get(s, x, y):
         return s.p[x, y] if 0 <= x < W and 0 <= y < H else (0, 0, 0, 0)
     def blend(s, x, y, col, a):
         if 0 <= x < W and 0 <= y < H:
-            r, g, b, al = s.p[x, y]; t = PAL[col] if isinstance(col, str) else col
+            r, g, b, al = s.p[x, y]; t = (THEMES[G["theme"]].get(col) or PAL[col]) if isinstance(col, str) else col
             s.p[x, y] = (round(r + (t[0] - r) * a), round(g + (t[1] - g) * a), round(b + (t[2] - b) * a), al)
     def rect(s, x, y, w, h, c):
         for i in range(int(x), int(x + w)):
@@ -93,6 +109,13 @@ def rug(c, x, y, w, col="red"):
 
 def picture(c, x, y, w=12, h=9, kind="sea"):
     c.box(x, y, w, h, "sky3", "wood2")
+    th = G["theme"]
+    if th == "space":
+        c.rect(x + 1, y + 1, w - 2, h - 2, "night1"); c.disc(x + w // 2, y + h // 2, 2, "orange"); c.hl(x + w // 2 - 4, y + h // 2, 9, "paper"); c.px(x + 2, y + 2, "white"); return
+    if th == "trains":
+        c.hl(x + 1, y + h - 3, w - 2, "grey2"); c.rect(x + 2, y + h - 6, 5, 3, "red"); c.rect(x + 7, y + h - 5, 3, 2, "blue"); c.px(x + 3, y + h - 7, "ink"); return
+    if th == "ocean":
+        c.rect(x + 1, y + 1, w - 2, h - 2, "blue"); c.sprite(x + 3, y + 3, [".##.#", "####.", ".##.#"], {"#": "orange"}); c.px(x + w - 3, y + 2, "white"); return
     if kind == "sea":
         c.rect(x + 1, y + h // 2, w - 2, h // 2 - 1, "blue"); c.dither(x + 1, y + h // 2, w - 2, 1, "blue", "glass"); c.disc(x + w - 4, y + 3, 1, "yellow")
     else:
@@ -114,14 +137,32 @@ def window(c, x, y, w, h, night=False, rain=False):
     top, mid, low = ("night1", "night2", "night2") if night else ("sky1", "sky2", "sky3")
     c.rect(x + 1, y + 1, w - 2, h - 2, top)
     c.dither(x + 1, y + h // 3, w - 2, h // 3, top, mid); c.rect(x + 1, y + 2 * h // 3, w - 2, h - 2 * h // 3 - 1, low if not night else mid)
-    if night:
-        for (i, j) in [(3, 3), (w - 5, 4), (w // 2, 2), (6, h - 6)]: c.px(x + i, y + j, "white")
-        c.disc(x + w - 6, y + 5, 2, "yellow"); c.px(x + w - 5, y + 4, "night1"); c.px(x + w - 5, y + 5, "night1")
+    th = G["theme"]
+    if night or th == "space":
+        if th == "space" and not night: c.rect(x + 1, y + 1, w - 2, h - 2, "night1"); c.dither(x + 1, y + h - 5, w - 2, 4, "night1", "night2")
+        for k, (i, j) in enumerate([(3, 3), (w - 5, 4), (w // 2, 2), (6, h - 6), (w - 8, h - 5)]):
+            if (k + F()) % 4: c.px(x + i, y + j, "white")
+        if th == "space":
+            c.disc(x + w - 7, y + 6, 3, "orange"); c.px(x + w - 8, y + 5, "yellow"); c.hl(x + w - 12, y + 6, 11, "paper"); c.px(x + w - 7, y + 6, "orange")
+        else:
+            c.disc(x + w - 6, y + 5, 2, "yellow"); c.px(x + w - 5, y + 4, "night1"); c.px(x + w - 5, y + 5, "night1")
+    elif th == "ocean":
+        hy = y + h // 2 + 1
+        c.rect(x + 1, hy, w - 2, y + h - 1 - hy, "blue"); c.hl(x + 1, hy, w - 2, "glass")
+        for i in range(x + 1 + F() % 4, x + w - 1, 4): c.px(i, hy + 2, "white"); c.px(i + 2, hy + 4, "glass")
+        c.disc(x + 5, y + 4, 2, "yellow")
     else:
-        cloud(c, x + 3, y + 4); 
+        cloud(c, x + 3, y + 4)
+    if th == "trains" and not night:
+        ty = y + h - 5; c.hl(x + 1, ty + 3, w - 2, "grey2")
+        tx = x + 1 + (F() * 4) % max(1, w - 2) - 8
+        for i in range(10):
+            for j in range(3):
+                if x + 1 <= tx + i < x + w - 1: c.px(tx + i, ty + j, "red" if j < 2 else "ink")
+        if x + 1 <= tx + 7 < x + w - 1: c.px(tx + 7, ty, "glass")
     if rain:
         for i in range(x + 2, x + w - 2, 3):
-            for j in range(y + 2 + (i % 4), y + h - 2, 5): c.px(i, j, "glass"); c.px(i, j + 1, "glass2")
+            for j in range(y + 2 + (i + F()) % 4, y + h - 2, 4): c.px(i, j, "glass"); c.px(i, j + 1, "glass2")
     c.vl(x + w // 2, y, h, "wood2"); c.hl(x, y + h // 2, w, "wood2")
     c.hl(x - 2, y + h + 1, w + 4, "wood3")
 
@@ -137,10 +178,33 @@ def sky_out(c, ground_y=46, night=False):
             col = cols[k]
             if k < 2 and f > 0.75 and (x + y) % 2: col = cols[k + 1]
             c.px(x, y, col)
-    cloud(c, 10, 6); cloud(c, 60, 12)
-    c.rect(0, ground_y, W, H - ground_y, "green")
-    c.dither(0, ground_y, W, 2, "green", "green3")
-    for x in range(0, W, 5): c.px(x, ground_y + 4 + (x % 3), "green2")
+    th = G["theme"]
+    if th == "space":
+        for k in range(26):
+            sx, sy = (k * 37) % W, (k * 13) % max(1, ground_y - 4)
+            if (k + F()) % 5: c.px(sx, sy, "white")
+        c.disc(W - 26, 10, 5, "orange"); c.disc(W - 27, 9, 2, "yellow"); c.hl(W - 34, 11, 17, "paper")
+    else:
+        cloud(c, 10, 6); cloud(c, 60, 12)
+    if th == "ocean":
+        sea = ground_y - 6
+        c.rect(0, sea, W, 6, "blue"); c.hl(0, sea, W, "glass")
+        for i in range(F() % 4, W, 4): c.px(i, sea + 2, "white"); c.px(i + 2, sea + 4, "glass")
+        bx = 40 + F(); c.rect(bx, sea - 1, 7, 2, "wood"); c.vl(bx + 3, sea - 7, 6, "ink2"); c.sprite(bx + 4, sea - 7, ["#..", "##.", "###"], {"#": "white"})
+    c.rect(0, ground_y, W, H - ground_y, "ground")
+    c.dither(0, ground_y, W, 2, "ground", "ground3")
+    for x in range(0, W, 5): c.px(x, ground_y + 4 + (x % 3), "ground2")
+    if th == "trains":
+        ry = ground_y + 1
+        c.hl(0, ry + 3, W, "grey2"); c.hl(0, ry, W, "grey2")
+        for x in range(0, W, 3): c.vl(x, ry, 4, "wood2")
+        tx = (F() * 10) % (W + 40) - 30
+        for (dx, col, hh) in [(0, "red", 6), (10, "blue", 5), (19, "yellow", 5)]:
+            for i in range(9):
+                for j in range(hh):
+                    c.px(tx + dx + i, ry - hh + j, col if j < hh - 1 else "ink")
+            c.px(tx + dx + 2, ry - 1, "ink"); c.px(tx + dx + 6, ry - 1, "ink")
+        c.rect(tx + 6, ry - 9, 2, 3, "ink2"); c.px(tx + 6 - F() % 2, ry - 11, "grey3")
 
 # ── люди ──
 def person(c, x, y, hair="hair1", shirt="blue", pants="ink2", skin="skin", face="r", pose="stand", hair_style="short", mouth="smile", extra=None):
@@ -212,7 +276,8 @@ def table(c, x, y, w, top="wood3"):
 
 def mug(c, x, y, col="red", steam=True):
     c.rect(x, y, 3, 3, col); c.px(x + 3, y + 1, col); c.hl(x, y, 3, "white")
-    if steam: c.px(x + 1, y - 2, "grey3"); c.px(x + 2, y - 3, "grey3"); c.px(x + 1, y - 4, "grey3")
+    if steam:
+        o = bob(); c.px(x + 1 + o, y - 2, "grey3"); c.px(x + 2 - o, y - 3, "grey3"); c.px(x + 1 + o, y - 4, "grey3")
 
 def bubble(c, x, y, w, h, icon=None, col="white", tail="l"):
     c.box(x, y, w, h, col, "ink")
@@ -229,6 +294,11 @@ HEART = [".#.#.", "#####", "#####", ".###.", "..#.."]
 STAR = ["..#..", ".###.", "#####", ".#.#."]
 NOTE = ["..##", "..#.", "..#.", "###.", "##.."]
 
+def star(c, x, y, col, i=0):
+    """Мерцающая звёздочка: в одном кадре из трёх она маленькая."""
+    if (i + F()) % 3 == 0: c.sprite(x + 1, y + 1, [".#.", "###", ".#."], {"#": "white"})
+    else: c.sprite(x, y, STAR, {"#": col})
+
 def plant(c, x, y):
     c.rect(x, y + 6, 6, 4, "orange"); c.hl(x, y + 6, 6, "red"); c.rect(x + 1, y + 10, 4, 1, "red2")
     for (i, j, col) in [(2, 0, "green"), (1, 1, "green"), (3, 1, "green2"), (0, 2, "green"), (2, 2, "green2"), (4, 2, "green"), (1, 3, "green2"), (3, 3, "green"), (5, 3, "green2"), (2, 4, "green"), (0, 4, "green2"), (4, 4, "green2"), (2, 5, "green2")]:
@@ -241,7 +311,9 @@ def shelf(c, x, y, w, items):
         c.rect(px, y - h, 2, h, col); c.px(px, y - h, shade(col)); px += 3
 
 def clock(c, x, y):
-    c.disc(x + 4, y + 4, 4, "ink"); c.disc(x + 4, y + 4, 3, "white"); c.vl(x + 4, y + 2, 3, "ink"); c.hl(x + 4, y + 4, 2, "red")
+    c.disc(x + 4, y + 4, 4, "ink"); c.disc(x + 4, y + 4, 3, "white"); c.vl(x + 4, y + 2, 3, "ink")
+    dx, dy = [(1, 0), (0, 1), (-1, 0), (0, -1)][F() % 4]
+    c.px(x + 4 + dx, y + 4 + dy, "red"); c.px(x + 4 + 2 * dx, y + 4 + 2 * dy, "red")
 
 def lamp(c, x, y, on=True):
     c.rect(x, y, 6, 3, "yellow2"); c.hl(x + 1, y, 4, "yellow"); c.vl(x + 3, y + 3, 6, "grey2"); c.rect(x + 1, y + 9, 5, 1, "grey2")
@@ -251,11 +323,12 @@ def lamp(c, x, y, on=True):
 def laptop(c, x, y, notif=False):
     c.box(x, y, 12, 8, "screen", "ink"); c.hl(x + 2, y + 2, 6, "white"); c.hl(x + 2, y + 4, 8, "teal2"); c.hl(x + 2, y + 5, 5, "teal2")
     c.rect(x - 1, y + 8, 14, 1, "grey"); c.hl(x - 1, y + 9, 14, "grey2")
-    if notif: c.disc(x + 11, y, 2, "red"); c.px(x + 11, y, "white")
+    if notif and F() < 2: c.disc(x + 11, y, 2, "red"); c.px(x + 11, y, "white")
 
 def phone(c, x, y, notif=0):
     c.box(x, y, 5, 8, "screen", "ink"); c.px(x + 2, y + 6, "white")
-    for k in range(notif): c.disc(x + 4 + k * 3, y - 2 - k * 2, 1, "red")
+    for k in range(notif):
+        if (F() + k) % 4 < 2: c.disc(x + 4 + k * 3, y - 2 - k * 2, 1, "red")
 
 def sticky(c, x, y, col="yellow"):
     c.rect(x, y, 5, 5, col); c.hl(x + 1, y + 2, 3, shade(col)); c.px(x + 4, y + 4, shade(col))
@@ -266,14 +339,14 @@ def papers(c, x, y, n=3):
         for j in range(3, 9, 2): c.hl(x + k * 2 + 2, y - k * 2 + j, 5, "grey3")
 
 def waves(c, x, y, n=3, col="orange", d="r"):
-    for k in range(n):
+    for k in range(min(n, 1 + F())):
         r = 3 + k * 3
         if d == "r": c.arc(x, y, r, -45, 46, col)
         else: c.arc(x, y, r, 135, 226, col)
 
 def rays(c, cx, cy, r0, r1, col="yellow", n=8):
     for k in range(n):
-        a = 2 * math.pi * k / n
+        a = 2 * math.pi * k / n + F() * math.pi / n / 2
         for t in range(r0, r1): c.px(round(cx + t * math.cos(a)), round(cy + t * math.sin(a)), col)
 
 def speaker(c, x, y):
@@ -289,7 +362,7 @@ def mask_face(c, x, y):
 def battery(c, x, y, level, col=None):
     c.box(x, y, 12, 7, "white", "ink"); c.rect(x + 12, y + 2, 1, 3, "ink")
     n = max(0, min(4, level)); colr = col or ("red" if n <= 1 else "yellow2" if n == 2 else "green")
-    for k in range(n): c.rect(x + 2 + k * 2 + (k > 0) * 0, y + 2, 2 if k < 4 else 1, 3, colr) if True else None
+    for k in range(n): c.rect(x + 2 + k * 2, y + 2, 2, 3, colr)
 
 def bed(c, x, y, w=30):
     c.rect(x, y, 2, 12, "wood2"); c.rect(x + w - 2, y + 4, 2, 8, "wood2")
@@ -330,7 +403,9 @@ def mountain(c, x, y, w, h):
         c.hl(x + w // 2 - hw, y + k, max(1, hw), "grey" if k > h // 3 else "grey3")
 
 def flag(c, x, y, col="red"):
-    c.vl(x, y, 9, "ink"); c.rect(x + 1, y, 5, 3, col); c.px(x + 6, y + 1, col)
+    c.vl(x, y, 9, "ink")
+    if bob(): c.rect(x + 1, y, 5, 3, col); c.px(x + 6, y + 1, col)
+    else: c.rect(x + 1, y + 1, 5, 3, col); c.px(x + 6, y + 1, col); c.px(x + 3, y, col)
 
 def cake(c, x, y):
     c.rect(x, y + 4, 12, 6, "pink"); c.hl(x, y + 4, 12, "white"); c.dither(x, y + 5, 12, 1, "white", "pink"); c.hl(x, y + 7, 12, "wood3")
@@ -363,17 +438,17 @@ def train_toy(c, x, y):
 
 def storm(c, x, y):
     c.rect(x + 1, y, 8, 3, "grey2"); c.rect(x, y + 1, 10, 2, "grey2"); c.rect(x + 3, y - 1, 3, 1, "grey2")
-    c.sprite(x + 4, y + 3, [".#", "#.", "##", ".#", "#."], {"#": "yellow"})
+    if F() in (1, 2): c.sprite(x + 4, y + 3, [".#", "#.", "##", ".#", "#."], {"#": "yellow"})
 
 def kettle(c, x, y):
     c.rect(x + 1, y + 2, 7, 6, "metal"); c.hl(x + 2, y + 1, 5, "metal"); c.hl(x + 1, y + 7, 7, "grey2"); c.rect(x - 1, y + 3, 2, 1, "metal"); c.px(x + 8, y + 3, "ink"); c.px(x + 9, y + 4, "ink"); c.px(x + 9, y + 5, "ink")
 
 def steam(c, x, y):
-    for k in range(3): c.px(x - k, y - k * 2, "white"); c.px(x - 1 - k, y - 1 - k * 2, "grey3")
+    for k in range(3): o = (k + F()) % 2; c.px(x - k - o, y - k * 2, "white"); c.px(x - 1 - k + o, y - 1 - k * 2, "grey3")
 
 def cup_tea(c, x, y):
     c.rect(x, y, 6, 4, "white"); c.hl(x + 1, y, 4, "wood3"); c.rect(x + 6, y + 1, 1, 2, "white"); c.hl(x - 1, y + 4, 8, "grey3")
-    for k in range(3): c.px(x + 2 + (k % 2), y - 2 - k, "grey3")
+    for k in range(3): c.px(x + 2 + ((k + F()) % 2), y - 2 - k, "grey3")
 
 def stethoscope_doc(c, x, y):
     person(c, x, y, hair="hair3", shirt="white", pants="blue2", face="l")
@@ -383,7 +458,7 @@ def runner(c, x, y, shirt="orange"):
     c.rect(x + 1, y + 1, 6, 6, "skin"); c.rect(x + 1, y, 6, 2, "hair2"); c.px(x + 5, y + 3, "ink"); c.px(x + 6, y + 5, "red2")
     c.rect(x + 1, y + 8, 7, 7, shirt); c.rect(x + 8, y + 9, 3, 1, shirt); c.px(x + 11, y + 8, "skin"); c.rect(x - 2, y + 11, 3, 1, shirt); c.px(x - 3, y + 12, "skin")
     c.rect(x + 2, y + 15, 3, 3, "ink2"); c.rect(x + 5, y + 15, 3, 2, "ink2"); c.rect(x + 7, y + 17, 3, 1, "ink2"); c.rect(x - 1, y + 18, 4, 1, "ink"); c.rect(x + 9, y + 17, 2, 1, "ink")
-    for k in range(3): c.hl(x - 8, y + 6 + k * 4, 5, "grey3")
+    for k in range(3): c.hl(x - 8 - (k + F()) % 3, y + 6 + k * 4, 5, "grey3")
 
 def bars(c, x, y, vals, cols):
     for k, (v, col) in enumerate(zip(vals, cols)):
@@ -445,7 +520,7 @@ def _(c):
     shadow(c, 23, 46, 10); ol(c, speaker, 20, 34); waves(c, 27, 39, 3, "orange")
     P(c, 50, 24, hair="hair2", shirt="red", face="l", mouth="flat", hair_style="long")
     headphones(c, 50, 23)
-    c.sprite(64, 18, EXCL, {"#": "red2"}); c.sprite(38, 18, NOTE, {"#": "purple"}); c.sprite(34, 26, NOTE, {"#": "blue2"})
+    c.sprite(64, 18, EXCL, {"#": "red2"}); c.sprite(38, 18 - bob(), NOTE, {"#": "purple"}); c.sprite(34, 26 - bob(1), NOTE, {"#": "blue2"})
 
 @scene("camo")
 def _(c):
@@ -466,7 +541,7 @@ def _(c):
     shadow(c, 46, 50, 66); ol(c, chair, 70, 36, "l")
     PS(c, 66, 20, hair="hair2", shirt="blue", face="l", mouth="o")
     ol(c, desk, 14, 38, 64); laptop(c, 40, 29, notif=True); papers(c, 18, 28, 3); phone(c, 58, 31, 2); mug(c, 32, 35, "teal")
-    c.sprite(72, 9, QMARK, {"#": "red"})
+    c.sprite(72, 9 - bob(), QMARK, {"#": "red"})
 
 @scene("activity")
 def _(c):
@@ -483,7 +558,7 @@ def _(c):
     P(c, 30, 22, hair="hair3", shirt="red", face="r", mouth="o")
     ol(c, storm, 28, 7)
     P(c, 58, 22, hair="hair2", shirt="yellow", face="l", pose="cheer", hair_style="long")
-    for (x, y) in [(52, 10), (70, 8), (62, 3)]: c.sprite(x, y, STAR, {"#": "yellow2"})
+    for i, (x, y) in enumerate([(52, 10), (70, 8), (62, 3)]): star(c, x, y, "yellow2", i)
 
 @scene("life")
 def _(c):
@@ -521,8 +596,8 @@ def _(c):
     room(c, "wallg", "wallg2")
     P(c, 56, 22, hair="hair4", shirt="teal", face="f", mouth="flat", hair_style="long")
     for (x, y, col) in [(28, 8, "red"), (40, 2, "yellow"), (76, 4, "blue"), (88, 12, "purple"), (22, 22, "orange"), (94, 26, "green")]:
-        ol(c, lambda c, x=x, y=y, col=col: (c.disc(x, y + 4, 4, col), c.disc(x - 1, y + 3, 1, "white")))
-    c.sprite(58, 6, QMARK, {"#": "ink2"})
+        ol(c, lambda c, x=x, y=y - bob(x), col=col: (c.disc(x, y + 4, 4, col), c.disc(x - 1, y + 3, 1, "white")))
+    c.sprite(58, 6 - bob(), QMARK, {"#": "ink2"})
     ol(c, plant, 8, 33); ol(c, plant, 106, 33)
 
 @scene("burnout")
@@ -530,14 +605,14 @@ def _(c):
     room(c, "wallb", "wallb2"); window(c, 84, 6, 24, 16, night=True)
     shadow(c, 45, 47, 50); ol(c, bed, 20, 34, 50)
     c.rect(24, 35, 6, 4, "skin"); c.rect(24, 34, 6, 2, "hair1"); c.px(28, 37, "ink2")
-    ol(c, battery, 40, 14, 1); c.sprite(57, 15, ["#..#", ".##.", ".##.", "#..#"], {"#": "red"})
+    ol(c, battery, 40, 14, 1 if F() % 2 == 0 else 0); c.sprite(57, 15, ["#..#", ".##.", ".##.", "#..#"], {"#": "red"})
     ol(c, phone, 80, 46); ol(c, lamp, 6, 32, on=False)
 
 @scene("wellbeing")
 def _(c):
     room(c, "night1", "night2", floor="wood2", floor2="ink2"); window(c, 70, 6, 28, 18, night=True)
     shadow(c, 38, 47, 52); ol(c, bed, 12, 34, 52); c.rect(16, 35, 6, 4, "skin"); c.rect(16, 34, 6, 2, "hair2")
-    for (x, y) in [(30, 14), (36, 9), (43, 4)]: c.sprite(x, y, ["####", "..#.", ".#..", "####"], {"#": "white"})
+    for k, (x, y) in enumerate([(30, 14), (36, 9), (43, 4)]): c.sprite(x, y - bob(k), ["####", "..#.", ".#..", "####"], {"#": "white"})
     ol(c, clock, 104, 30)
 
 @scene("health")
@@ -555,7 +630,7 @@ def _(c):
     sky_out(c, 50); mountain(c, -10, 28, 50, 26); mountain(c, 80, 26, 50, 28); mountain(c, 20, 14, 80, 40)
     ol(c, person, 56, 0, hair="hair2", shirt="red", face="f", pose="cheer")
     ol(c, flag, 68, 4, "yellow")
-    for (x, y) in [(14, 6), (100, 4), (34, 2), (88, 14)]: c.sprite(x, y, STAR, {"#": "yellow"})
+    for i, (x, y) in enumerate([(14, 6), (100, 4), (34, 2), (88, 14)]): star(c, x, y, "yellow", i)
 
 @scene("school")
 def _(c):
@@ -578,15 +653,15 @@ def _(c):
     room(c, "wallg", "wallg2"); window(c, 70, 6, 30, 22); light(c, 74, 46, 26, 10)
     rug(c, 6, 53, 54, "yellow"); ol(c, sofa, 14, 38, 38, "teal")
     PS(c, 26, 26, hair="hair1", shirt="yellow", face="r")
-    ol(c, cup_tea, 62, 44); ol(c, plant, 106, 33); c.sprite(40, 14, NOTE, {"#": "purple"})
+    ol(c, cup_tea, 62, 44); ol(c, plant, 106, 33); c.sprite(40, 14 - bob(), NOTE, {"#": "purple"})
 
 @scene("energy")
 def _(c):
     room(c, "wall", "wall2")
-    ol(c, battery, 12, 10, 1); c.sprite(29, 11, ["..#..", "..##.", "#####", "..##.", "..#.."], {"#": "ink2"}); ol(c, battery, 38, 10, 4)
+    ol(c, battery, 12, 10, 1); c.sprite(29, 11, ["..#..", "..##.", "#####", "..##.", "..#.."], {"#": "ink2"}); ol(c, battery, 38, 10, 1 + F())
     rug(c, 6, 53, 46, "purple"); ol(c, sofa, 14, 38, 30, "purple")
     P(c, 72, 22, hair="hair3", shirt="green", face="l", pose="hold"); ol(c, lambda c: c.box(66, 29, 6, 6, "yellow", "ink"))
-    for (x, y) in [(86, 8), (96, 14)]: c.sprite(x, y, STAR, {"#": "yellow2"})
+    for i, (x, y) in enumerate([(86, 8), (96, 14)]): star(c, x, y, "yellow2", i)
 
 @scene("masks")
 def _(c):
@@ -597,20 +672,68 @@ def _(c):
     P(c, 50, 22, hair="hair1", shirt="teal", face="r", pose="hold"); ol(c, mask_face, 60, 22)
     rug(c, 30, 53, 60, "teal")
 
-def render(name):
-    c = C(); S[name](c); return c
+THEME_NAMES = ["default", "space", "trains", "ocean"]
+FRAMES = 4
+
+def render(name, theme="default", f=0):
+    G["theme"], G["f"] = theme, f
+    c = C(); S[name](c); G["theme"], G["f"] = "default", 0
+    return c
+
+def b64(im):
+    b = io.BytesIO(); im.save(b, "PNG", optimize=True); return base64.b64encode(b.getvalue()).decode()
+
+def anim_strip(name, theme):
+    """Полоса FRAMES×W: в кадре k только пиксели, которые отличаются от кадра 0. None, если сцена не меняется."""
+    fr = [render(name, theme, f).im.convert("RGB") for f in range(FRAMES)]
+    strip = Image.new("RGBA", (W * FRAMES, H), (0, 0, 0, 0)); sp = strip.load(); changed = False
+    p0 = fr[0].load()
+    diff = set()
+    for k in range(1, FRAMES):
+        pk = fr[k].load()
+        for x in range(W):
+            for y in range(H):
+                if pk[x, y] != p0[x, y]: diff.add((x, y))
+    if not diff: return None
+    for k in range(FRAMES):
+        pk = fr[k].load()
+        for (x, y) in diff: sp[k * W + x, y] = pk[x, y] + (255,)
+    return strip
 
 if __name__ == "__main__":
     root = pathlib.Path(__file__).resolve().parent.parent
-    out = {n: base64.b64encode(render(n).png()).decode() for n in S}
-    js = "// Пиксельные картинки ND-Screen (120×60). Сгенерировано tools/pixelart.py, руками не править.\nwindow.ND = window.ND || {};\nND.PIXELS = {\n"
-    js += "".join(f'  {n}: "data:image/png;base64,{b}",\n' for n, b in out.items()) + "};\n"
+    base, anim = {}, {}
+    for th in THEME_NAMES:
+        base[th] = {n: b64(render(n, th).im.convert("RGB")) for n in S}
+        anim[th] = {}
+        for n in S:
+            st = anim_strip(n, th)
+            if st is not None: anim[th][n] = b64(st)
+    js = "// Пиксельные картинки ND-Screen (120×60, 4 темы, анимация 4 кадра). Сгенерировано tools/pixelart.py, руками не править.\nwindow.ND = window.ND || {};\n"
+    js += f"ND.PIXFRAMES = {FRAMES};\n"
+    for var, data in (("PIXELS", base), ("PIXANIM", anim)):
+        js += f"ND.{var} = {{\n"
+        for th, d in data.items():
+            js += f"  {th}: {{\n" + "".join(f'    {n}: "data:image/png;base64,{b}",\n' for n, b in d.items()) + "  },\n"
+        js += "};\n"
     (root / "src" / "pixels.js").write_text(js, encoding="utf-8")
     if "--sheet" in sys.argv:
-        names = list(S); cols = 3; sc = 4
-        sheet = Image.new("RGB", (cols * (W * sc + 8), ((len(names) + cols - 1) // cols) * (H * sc + 8)), (30, 30, 30))
-        for k, n in enumerate(names):
-            im = render(n).im.resize((W * sc, H * sc), Image.NEAREST)
-            sheet.paste(im, ((k % cols) * (W * sc + 8), (k // cols) * (H * sc + 8)))
-        sheet.save(sys.argv[sys.argv.index("--sheet") + 1])
-    print(len(S), "сцен,", sum(len(b) for b in out.values()) // 1024, "КБ base64")
+        out = sys.argv[sys.argv.index("--sheet") + 1]; names = list(S); sc = 3
+        ths = [a for a in sys.argv if a.startswith("--theme=")]
+        ths = [ths[0][8:]] if ths else THEME_NAMES
+        for th in ths:
+            cols = 4
+            sheet = Image.new("RGB", (cols * (W * sc + 6), ((len(names) + cols - 1) // cols) * (H * sc + 6)), (30, 30, 30))
+            for k, n in enumerate(names):
+                im = render(n, th).im.resize((W * sc, H * sc), Image.NEAREST)
+                sheet.paste(im, ((k % cols) * (W * sc + 6), (k // cols) * (H * sc + 6)))
+            sheet.save(out.replace(".png", f"-{th}.png"))
+        if "--frames" in sys.argv:
+            n = sys.argv[sys.argv.index("--frames") + 1]
+            fs = Image.new("RGB", (FRAMES * (W * 4 + 6), len(THEME_NAMES) * (H * 4 + 6)), (30, 30, 30))
+            for j, th in enumerate(THEME_NAMES):
+                for f in range(FRAMES):
+                    fs.paste(render(n, th, f).im.resize((W * 4, H * 4), Image.NEAREST), (f * (W * 4 + 6), j * (H * 4 + 6)))
+            fs.save(out.replace(".png", f"-frames-{n}.png"))
+    tot = sum(len(b) for d in base.values() for b in d.values()) + sum(len(b) for d in anim.values() for b in d.values())
+    print(len(S), "сцен ×", len(THEME_NAMES), "тем; анимированных:", {th: len(d) for th, d in anim.items()}, tot // 1024, "КБ base64")
