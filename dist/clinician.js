@@ -273,10 +273,45 @@ ND.clinician = (function () {
       if (NVs.done) add(`Фигуры Навона: медиана глоб./лок. ${r0_(NVs.global.rt)}/${r0_(NVs.local.rt)} мс (глоб. преимущество ${r0_(NVs.globalAdv)} мс), точность ${Math.round(NVs.global.acc * 100)}%/${Math.round(NVs.local.acc * 100)}%, интерференция глоб.→лок. ${r0_(NVs.local.interf)} мс, лок.→глоб. ${r0_(NVs.global.interf)} мс` + (NVs.enough ? "" : "; много ошибок, ненадёжно"));
       const V = [["Мысли", ND.lab.verdict("probe", PS)], ["Сейчас или потом", ND.lab.verdict("dd", DD)], ["Реакция", RTs.done ? ND.lab.verdict("rt", RTs) : null],
         ["Интервалы", TPs.done ? ND.lab.verdict("tp", { ...TPs, counted: !!lab.tpCounted }) : null], ["Нагрузка", LDs.done ? ND.lab.verdict("load", LDs) : null], ["Навон", NVs.done ? ND.lab.verdict("navon", NVs) : null]].filter(([, v]) => v);
+      const SPs = ND.lab.spanSummary(lab.span), TAs = ND.lab.tapSummary(lab.tap), PIs = ND.lab.pitchSummary(lab.pitch), TRs = ND.lab.traceSummary(lab.trace);
+      const f2 = (x) => (x == null ? "—" : x.toFixed(2).replace(".", ","));
+      if (SPs.done) add(`Цифровой ряд: прямой ${SPs.fwd == null ? "—" : SPs.fwd}, обратный ${SPs.bwd == null ? "—" : SPs.bwd} (наибольшая длина с хотя бы одним верным повтором)`);
+      if (TAs.done) add(`Стук в ритм (700 мс): асинхронность с тактом ${r0_(TAs.asynMean)} ± ${r0_(TAs.asynSd)} мс; без такта средний интервал ${r0_(TAs.itiMean)} мс, CV ${f2(TAs.cv)}` + (TAs.drift != null ? `, темп ${Math.round(TAs.drift * 100)}% от заданного` : "") + (TAs.enough ? "" : "; мало данных"));
+      if (PIs.done) add(`Различение высоты (1000 Гц, лестница 2-вниз/1-вверх): порог ${PIs.thr == null ? "—" : PIs.thr.toFixed(2).replace(".", ",") + "%"}; точность на лёгких шагах ${PIs.easyAcc == null ? "—" : Math.round(PIs.easyAcc * 100) + "%"}` + (PIs.enough ? "" : "; ненадёжно"));
+      if (TRs.done) add(`Обведение дорожки: вне дорожки ${Math.round(TRs.out * 100)}% пути, среднее отклонение ${f2(TRs.dev)} полуширины, ${r0_(TRs.time)} с на дорожку, отрывов ${TRs.lifts}` + (TRs.pointer ? ` (${TRs.pointer === "touch" ? "палец" : TRs.pointer === "pen" ? "стилус" : "мышь"})` : ""));
+      V.push(...[["Цифровой ряд", SPs.done ? ND.lab.verdict("span", SPs) : null], ["Ритм", TAs.done ? ND.lab.verdict("tap", TAs) : null], ["Высота звука", PIs.done ? ND.lab.verdict("pitch", PIs) : null], ["Линия", TRs.done ? ND.lab.verdict("trace", TRs) : null]].filter(([, v]) => v));
       if (V.length) add(`Выводы (ориентир, не норма): ${V.map(([k, v]) => `${k} — ${v.title.toLowerCase()}`).join("; ")}`);
+      V.filter(([, v]) => v.you).forEach(([k, v]) => add(`${k}, в контексте РАС/СДВГ: ${v.you}`));
+      const DV = lab.dev || {}, bad = Object.entries(DV).filter(([, d]) => d && !d.ok);
+      if (bad.length) add(`Устройство: ${bad.map(([k, d]) => `${k} — ${d.issues.join(", ")}`).join("; ")}; результаты этих заданий могут быть искажены`);
+      if (ND.views) {
+        const sums = { probe: PS, dd: DD, rt: RTs, tp: { ...TPs, counted: !!lab.tpCounted }, load: LDs, navon: NVs, span: SPs, tap: TAs, pitch: PIs, trace: TRs };
+        const vs = {}; for (const k of Object.keys(sums)) vs[k] = sums[k] && (sums[k].done || sums[k].complete || sums[k].enough) ? ND.lab.verdict(k, sums[k]) : null;
+        const WDr = ND.views.wordsDeeds(R, sums, vs);
+        if (WDr.length) add(`Анкета и задания: ${WDr.map((x) => `${x.what.toLowerCase()} — анкета ${x.qHi ? "выражено" : "нет"}, задание ${x.tHi ? "выражено" : "нет"} (${x.agree ? "совпадает" : "расходится"})`).join("; ")}`);
+      }
       if (rows.length) {
-        h.push(`<section class="block"><h2>Лаборатория (экспериментально)</h2><ul class="small stack">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="small muted">Необязательные задания в браузере. Норм для взрослых в России нет, в индексы и критерии не входят. Пробы: Seli et al., 2015. Обесценивание: Du, Green & Myerson, 2002; AUC по Myerson et al., 2001. Изменчивость реакции: Kofler et al., 2013. Интервалы: Marx et al., 2021. Нагрузка: Remington, Swettenham & Lavie, 2012. Навон: Navon, 1977; van der Hallen et al., 2015.</p></section>`);
+        h.push(`<section class="block"><h2>Лаборатория (экспериментально)</h2><ul class="small stack">${rows.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="small muted">Необязательные задания в браузере. Норм для взрослых в России нет, в индексы и критерии не входят. Пробы: Seli et al., 2015. Обесценивание: Du, Green & Myerson, 2002; AUC по Myerson et al., 2001. Изменчивость реакции: Kofler et al., 2013. Интервалы: Marx et al., 2021. Нагрузка: Remington, Swettenham & Lavie, 2012. Навон: Navon, 1977; van der Hallen et al., 2015. Цифровой ряд: Pievsky & McGrath, 2018; Wang et al., 2017. Ритм: Hove et al., 2017; Kasten, Jacoby & Ahissar, 2023. Высота звука: Bonnel et al., 2003, 2010. Моторика: Kaiser et al., 2015; Fournier et al., 2010. Связь анкет и заданий слабая (Toplak, West & Stanovich, 2013).</p></section>`);
         T.push("ЛАБОРАТОРИЯ (экспериментально, в подсчёт не входит)", ...tx, "");
+      }
+    }
+
+    // v0.13: сенсорика, исполнительные функции, компенсация, желание общаться (самоотчёт, в подсчёт не входит)
+    if (ND.views) {
+      const VW = [], P_ = (x) => (x == null ? "—" : pct(x));
+      const SN = ND.views.sensory(R); // порог высоты звука — в разделе лаборатории
+      if (SN.answered >= 3) VW.push(["Сенсорный профиль по каналам", SN.rows.filter((x) => x.now != null).map((x) => `${x.label}: ${P_(x.now)}${x.child != null ? ` (детство ${P_(x.child)})` : ""}${x.types.length ? ", " + x.types.map((t) => ND.views.TYPE_LABEL[t]).join(", ") : ""}`)]);
+      const EFv = ND.views.ef(R);
+      if (EFv.rows.length >= 3) VW.push(["Исполнительные функции (области Баркли, наше распределение вопросов)", EFv.rows.map((x) => `${x.label}: ${P_(x.now)}${x.child != null ? ` (детство ${P_(x.child)})` : ""}`)]);
+      const KV = ND.views.compensation(R);
+      if (KV.n || KV.lighter.length) VW.push([`Признаки детства, ослабевшие сейчас: компенсировано ${KV.learned.length}, на усилии ${KV.effort.length}, просто легче ${KV.lighter.length}` + (KV.effort.length && (KV.cost.fatigue || KV.cost.burnout) ? "; при этом отмечены усталость после общения или истощение" : ""),
+        [...KV.effort.map((x) => `[на усилии] ${x.t} (детство ${x.child}, сейчас ${x.now} из 4)`), ...KV.learned.map((x) => `[компенсировано] ${x.t} (детство ${x.child}, сейчас ${x.now} из 4)`)].slice(0, 10)]);
+      const WN = ND.views.want(R);
+      if (WN.rows.length) VW.push([`Мотивация к общению: ${WN.kind === "want" ? "хочет, но трудно" : WN.kind === "content" ? "в основном не хочет больше общения" : "смешанно"} (да ${WN.yes}, нет ${WN.no}, по-разному ${WN.mix})` + (WN.kind !== "want" && E.scales.PHQ9 && E.scales.PHQ9.positive ? "; учесть PHQ-9 ≥ 10 (ангедония?)" : ""), WN.rows.map((x) => `${x.t}: ${x.label.toLowerCase()}`)]);
+      if (VW.length) {
+        h.push(`<section class="block"><h2>Дополнительные профили (самоотчёт)</h2>${VW.map(([t, l]) => `<p><b>${esc(t)}</b></p>${l.length ? `<ul class="small stack">${l.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}`).join("")}
+          <p class="small muted">Пересказ тех же ответов в другом разрезе; в индексы и критерии не входит. Каналы — по образцу Glasgow Sensory Questionnaire (Robertson & Simmons, 2013); области исполнительных функций — по модели BDEFS (Barkley, 2011), сама шкала не используется. Компенсация: Livingston, Shah & Happé, 2019. Мотивация: Jaswal & Akhtar, 2019.</p></section>`);
+        T.push("ДОПОЛНИТЕЛЬНЫЕ ПРОФИЛИ (самоотчёт, в подсчёт не входит)", ...VW.flatMap(([t, l]) => ["  " + t, ...l.map((x) => "    – " + x)]), "");
       }
     }
 

@@ -188,6 +188,8 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
           `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}${unk("mask", r.maskUnk)}</div></div>`}
 ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
           `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}${unk("harm", r.harmUnk)}</div></div>`}
+${ND.views && ND.views.WANT[it.id] ? `<div class="sub want-q"><span class="sub-label">${esc(ND.views.WANT[it.id])} <span class="muted">Это не входит в баллы, а помогает понять, в чём трудность.</span></span><div class="chips">${ND.views.WANT_OPTS.map((l, i) =>
+          `<button class="chip" data-act="want" data-v="${i}" aria-pressed="${r.want === i}">${l}</button>`).join("")}${unk("want", r.wantUnk)}</div></div>` : ""}
       </div>`;
   }
 
@@ -328,7 +330,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
   // Разделы PHQ-9, GAD-7 и ABSI проходят без игровых элементов: без музыки, персонажа и проб.
   const CALM = new Set(["mood", "burnout"]);
   const restore = () => { const x = load() || fresh(); x.seen = x.seen || {}; x.breaks = x.breaks || []; return x; };
-  const labState = () => { const L = state.lab || {}; return { probes: state.probe && state.probe.list, dd: L.dd, rt: L.rt, tp: L.tp, tpCounted: L.tpCounted, load: L.load, navon: L.navon }; };
+  const labState = () => { const L = state.lab || {}; return { probes: state.probe && state.probe.list, dd: L.dd, rt: L.rt, tp: L.tp, tpCounted: L.tpCounted, load: L.load, navon: L.navon, span: L.span, tap: L.tap, pitch: L.pitch, trace: L.trace, dev: L.dev }; };
   // в примере отчёта настройки оформления тоже сохраняем, но в настоящие ответы
   function savePref() {
     if (!state.sample) return;
@@ -473,7 +475,21 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     navon: { title: "Лес или деревья", time: "около 2 минут",
       what: "Большая буква сложена из маленьких. В одной части называете большую букву, в другой маленькие. Сравниваем, что вы видите быстрее: целое или детали.",
       how: ["Буквы только две: Н и С.", "Отвечайте кнопками или клавишами: ← или Н — это «Н», → или С — это «С».", "Отвечайте быстро, но без ошибок. В каждой части сначала 4 тренировочные попытки."] },
+    span: { title: "Удержать в уме", time: "около 4 минут",
+      what: "По одной появятся цифры. Нужно ввести их в том же порядке, а во второй части в обратном. Так видно, сколько вы удерживаете в уме.",
+      how: ["Цифры показываются по одной, раз в секунду. Записывать нельзя, проговаривать про себя можно.", "Потом введите их кнопками или клавишами 1–9. Ошиблись в цифре — кнопка «Стереть».", "Ряд постепенно удлиняется. Задание закончится, когда обе попытки одной длины не получатся.", "Сначала прямой порядок, потом обратный. Перед каждой частью есть пример."] },
+    tap: { title: "В ритм", time: "около 1 минуты",
+      what: "Стучите в такт мигающему кружку, а когда он перестанет мигать, держите тот же темп сами.",
+      how: ["Стучите по серой области или нажимайте пробел одним пальцем, ровно в момент мигания.", "После 24 миганий кружок погаснет. Продолжайте стучать в том же темпе, пока счётчик не дойдёт до нуля.", "Не считайте вслух и не отбивайте ногой: просто держите ритм."] },
+    pitch: { title: "Слух на высоту звука", time: "около 4 минут",
+      what: "Прозвучат два коротких тона. Нужно сказать, какой из них выше. Разница становится всё меньше, пока не станет неразличимой.",
+      how: ["Лучше в наушниках и в тишине. Громкость — комфортная, не громкая.", "После двух звуков нажмите «Первый выше» или «Второй выше» (клавиши 1 и 2 или ← и →).", "Если не уверены, всё равно выберите: угадывание тоже часть задания.", "Сначала 2 лёгких тренировочных пары."] },
+    trace: { title: "Провести линию", time: "около 1 минуты",
+      what: "Проведите пальцем или мышью по извилистой дорожке от зелёного кружка до красного, стараясь не выходить за края.",
+      how: ["Нажмите на зелёный кружок и, не отрывая палец или кнопку мыши, ведите по дорожке до красного.", "Ведите в своём обычном темпе: не нужно ни спешить, ни ползти.", "Всего 3 дорожки. Если оторвали палец, продолжите с того же места."] },
   };
+  // Задания, где важно точное время на экране: перед ними 1,5 секунды проверяем устройство
+  const TIMED = ["rt", "load", "navon", "span", "tap"];
   const labData = () => state.lab || (state.lab = { dd: {} });
   const labSeed = () => { const L = labData(); if (!L.seed) L.seed = (Math.random() * 4294967295) >>> 0 || 1; return L.seed; };
   const sumOf = (task, L) => {
@@ -482,8 +498,14 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     if (task === "tp") return { ...ND.lab.tpSummary(L.tp), counted: !!L.tpCounted };
     if (task === "load") return ND.lab.loadSummary(L.load);
     if (task === "navon") return ND.lab.navonSummary(L.navon);
+    if (task === "span") return ND.lab.spanSummary(L.span);
+    if (task === "tap") return ND.lab.tapSummary(L.tap);
+    if (task === "pitch") return ND.lab.pitchSummary(L.pitch);
+    if (task === "trace") return ND.lab.traceSummary(L.trace);
     return null;
   };
+  // Заметка об устройстве под результатом задания на время
+  const devNote = (task) => { const d = ((state.lab || {}).dev || {})[task]; return d && !d.ok ? `<p class="small dev-note">Устройство во время задания: ${esc(d.issues.join("; "))}. Результат может быть искажён, лучше пройти ещё раз на компьютере с закрытыми лишними вкладками.</p>` : ""; };
   function spark(series) {
     const W = 320, H = 90, vals = series.filter((x) => x != null), max = Math.min(1500, Math.max(400, ...vals));
     const x = (i) => 6 + (i / Math.max(1, series.length - 1)) * (W - 12), y = (v) => H - 8 - (Math.min(v, max) / max) * (H - 16);
@@ -502,7 +524,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       <p>Обычное время ответа ${ms(S.median)}. Разброс: коэффициент вариации <b class="mono">${dec2(S.cv)}</b> (стандартное отклонение ${ms(S.sd)} при среднем ${ms(S.mean)}). Очень медленных ответов, вдвое дольше обычного: ${S.slow} из ${S.valid}.${S.early ? ` Нажатий заранее: ${S.early}.` : ""}${S.miss ? ` Пропусков: ${S.miss}.` : ""}</p>
       ${spark(S.series)}
       <p class="small">Чем выше коэффициент вариации, тем сильнее ответы «гуляют» от попытки к попытке.${tired ? ` Во второй половине разброс стал больше (${dec2(S.cv1)} → ${dec2(S.cv2)}): так часто проявляется усталость.` : ""}</p>
-      ${full ? `<p class="small muted">Это один из самых устойчивых лабораторных признаков СДВГ: в метаанализе 319 исследований время реакции при СДВГ было заметно изменчивее, а если это учесть, люди с СДВГ в среднем не медленнее. У взрослых различие меньше, чем у детей (Kofler et al., 2013). В жизни это похоже на «сегодня получается, завтра нет», и это не лень. Норм для такого короткого задания в браузере нет. Разброс зависит и от усталости, сна, кофе и устройства, поэтому по одному результату ничего нельзя сказать о диагнозе. Подробнее: ${MAPLINK("rt_variability", "«Нестабильность внимания» на карте")}.</p>` : ""}`;
+      ${full ? `<p class="small muted">Это один из самых устойчивых лабораторных признаков СДВГ: в метаанализе 319 исследований время реакции при СДВГ было заметно изменчивее, а если это учесть, люди с СДВГ в среднем не медленнее. У взрослых различие меньше, чем у детей (Kofler et al., 2013). В жизни это похоже на «сегодня получается, завтра нет», и это не лень. Норм для такого короткого задания в браузере нет. Разброс зависит и от усталости, сна, кофе и устройства, поэтому по одному результату ничего нельзя сказать о диагнозе. Подробнее: ${MAPLINK("rt_variability", "«Нестабильность внимания» на карте")}.</p>` : ""}${devNote("rt")}`;
   }
   function tpHtml(S, full) {
     if (!S || !S.done) return "";
@@ -524,7 +546,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       ${S.unreliable ? `<p class="small muted">Квадрат часто «виделся» и тогда, когда его не было (${pc0((S.low.fa + S.high.fa) / 2)} таких попыток), поэтому ответы о нём ненадёжны.</p>` : ""}
       ${S.lowMissed ? `<p class="small muted">Квадрат редко замечался даже при лёгком поиске, поэтому сравнить уровни нагрузки не получается. Возможно, он слишком мелкий на вашем экране или взгляд уходил от центра.</p>` : ""}
       ${S.guessing ? `<p class="small muted">При трудном поиске буква угадывалась не лучше случайного, поэтому сравнение ненадёжно.</p>` : ""}
-      ${full ? `<p class="small muted">Задание сделано по образцу опытов Нилли Лави. Типичные взрослые при высокой нагрузке замечали лишний объект заметно реже, а у аутичных взрослых нагрузка на это почти не влияла: авторы объясняют это большей ёмкостью восприятия (Remington, Swettenham & Lavie, 2012; Remington et al., 2009; у детей: Swettenham et al., 2014). Исследований немного, а в задании всего 8 попыток с квадратом на каждый уровень, поэтому это наблюдение, а не измерение. Время показа зависит от экрана. Подробнее: ${MAPLINK("perceptual_capacity", "«Ёмкость восприятия» на карте")}.</p>` : ""}`;
+      ${full ? `<p class="small muted">Задание сделано по образцу опытов Нилли Лави. Типичные взрослые при высокой нагрузке замечали лишний объект заметно реже, а у аутичных взрослых нагрузка на это почти не влияла: авторы объясняют это большей ёмкостью восприятия (Remington, Swettenham & Lavie, 2012; Remington et al., 2009; у детей: Swettenham et al., 2014). Исследований немного, а в задании всего 8 попыток с квадратом на каждый уровень, поэтому это наблюдение, а не измерение. Время показа зависит от экрана. Подробнее: ${MAPLINK("perceptual_capacity", "«Ёмкость восприятия» на карте")}.</p>` : ""}${devNote("load")}`;
   }
   function navonHtml(S, full) {
     if (!S || !S.done) return "";
@@ -536,14 +558,46 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     return `<h3>${TASKS.navon.title}</h3>
       <p>Большую букву вы называли за ${ms(S.global.rt)}, маленькие за ${ms(S.local.rt)}. ${words}</p>
       <p class="small">Когда большая и маленькие буквы не совпадали, ${itf(gI, "целое мешало называть детали")}, ${itf(lI, "детали мешали называть целое")}.</p>
-      ${full ? `<p class="small muted">Задание на основе фигур Навона (Navon, 1977). В метаанализе 56 исследований у аутичных людей не нашли ни общего преимущества в деталях, ни «неспособности видеть целое», но целое в среднем замечалось немного позже (van der Hallen et al., 2015). Поэтому результат описывает стиль, а не дефицит. Норм нет, попыток немного. Подробнее: ${MAPLINK("detail_focus", "«Внимание к деталям» на карте")}.</p>` : ""}`;
+      ${full ? `<p class="small muted">Задание на основе фигур Навона (Navon, 1977). В метаанализе 56 исследований у аутичных людей не нашли ни общего преимущества в деталях, ни «неспособности видеть целое», но целое в среднем замечалось немного позже (van der Hallen et al., 2015). Поэтому результат описывает стиль, а не дефицит. Норм нет, попыток немного. Подробнее: ${MAPLINK("detail_focus", "«Внимание к деталям» на карте")}.</p>` : ""}${devNote("navon")}`;
   }
-  const TASK_HTML = { rt: rtHtml, tp: tpHtml, load: loadHtml, navon: navonHtml };
+  function spanHtml(S, full) {
+    if (!S || !S.done) return "";
+    const f = S.rows.filter((x) => x.dir === "f"), b = S.rows.filter((x) => x.dir === "b");
+    return `<h3>${TASKS.span.title}</h3>
+      <p>В прямом порядке вы удержали <b>${S.fwd}</b> цифр, в обратном <b>${S.bwd}</b>. Верных попыток: ${f.filter((x) => x.ok).length} из ${f.length} и ${b.filter((x) => x.ok).length} из ${b.length}.</p>
+      <p class="small">Прямой порядок больше говорит о внимании и объёме, обратный — о рабочей памяти: удержать и одновременно переставить.</p>
+      ${full ? `<p class="small muted">Задание по образцу «ряда цифр» из классических тестов памяти. Норм для этой браузерной версии нет: границы в выводе — наш ориентир. Результат зависит от усталости, тревоги и того, проговаривали ли вы цифры про себя.</p>` : ""}${devNote("span")}`;
+  }
+  function tapHtml(S, full) {
+    if (!S || !S.done) return "";
+    if (!S.enough) return `<h3>${TASKS.tap.title}</h3><p class="small muted">Засчитанных нажатий слишком мало (с тактом ${S.nSync}, без такта ${S.nCont}). Попробуйте ещё раз.</p>`;
+    return `<h3>${TASKS.tap.title}</h3>
+      <p>С миганием: нажатия отклонялись от него в среднем на ${ms(S.asynSd)} в разные стороны${S.asynMean != null ? ` и ${S.asynMean < 0 ? "чуть опережали" : "чуть отставали от"} его на ${ms(Math.abs(S.asynMean))}` : ""}.</p>
+      <p>Без мигания: средний промежуток ${ms(S.itiMean)} при нужных 700 мс, разброс промежутков <b class="mono">${Math.round(S.cv * 100)}%</b>.</p>
+      ${full ? `<p class="small muted">Опережать мигание на несколько десятков миллисекунд — нормально, так делает большинство людей. Главные показатели — разброс с тактом (насколько точно вы подстраиваетесь) и разброс без такта (насколько ровно идут ваши внутренние часы). Такт задаётся миганием, а не звуком: звук в браузере запаздывает непредсказуемо (Bridges et al., 2020). Норм нет, границы — наш ориентир.</p>` : ""}${devNote("tap")}`;
+  }
+  function pitchHtml(S, full) {
+    if (!S || !S.done) return "";
+    if (!S.enough) return `<h3>${TASKS.pitch.title}</h3><p class="small muted">На лёгких парах было много ошибок (верно ${pc0(S.easyAcc)}), поэтому порог не определён.</p>`;
+    const f = S.thr < 1 ? S.thr.toFixed(1).replace(".", ",") : String(Math.round(S.thr * 10) / 10).replace(".", ",");
+    return `<h3>${TASKS.pitch.title}</h3>
+      <p>Порог различения: <b class="mono">${f}%</b>. Это примерно ${Math.max(1, Math.round(S.thr * 10))} Гц при звуке 1000 Гц. Пар прослушано ${S.n}, разворотов лесенки ${S.revs}.</p>
+      ${full ? `<p class="small muted">Порог — разница в высоте, которую вы различаете примерно в 7 случаях из 10 (лесенка «2 вниз — 1 вверх», Levitt, 1971). Основная частота каждый раз своя, чтобы сравнивались два звука, а не память. Результат зависит от наушников, громкости и музыкального опыта. Норм для этой версии нет, границы — наш ориентир.</p>` : ""}`;
+  }
+  function traceHtml(S, full) {
+    if (!S || !S.done) return "";
+    return `<h3>${TASKS.trace.title}</h3>
+      <p>За края дорожки вы выходили на <b>${pc0(S.out)}</b> пути, среднее отклонение — ${Math.round(S.dev * 100)}% от полуширины дорожки. Одна дорожка в среднем заняла ${S.time.toFixed(1).replace(".", ",")} с${S.lifts ? `, палец или кнопку отрывали ${S.lifts} раз` : ""}.</p>
+      <p class="small">Устройство: ${S.pointer === "touch" ? "палец на сенсорном экране" : S.pointer === "pen" ? "стилус" : "мышь или тачпад"}. Сравнивать результат можно только с собой на том же устройстве.</p>
+      ${full ? `<p class="small muted">Точность движения зависит от устройства, размера экрана и скорости. Норм нет, границы — наш ориентир.</p>` : ""}`;
+  }
+  const TASK_HTML = { rt: rtHtml, tp: tpHtml, load: loadHtml, navon: navonHtml, span: spanHtml, tap: tapHtml, pitch: pitchHtml, trace: traceHtml };
   // Блок «Вывод»: итог задания, что это значит, связь с исследованиями и что может помочь
   function verdictHtml(v, full) {
     if (!v) return "";
     return `<div class="verdict t-${v.tone}"><span class="eyebrow">Вывод</span><b class="v-title">${esc(v.title)}</b><p>${esc(v.means)}</p>
-      ${full && v.link ? `<p class="small">${esc(v.link)}</p>` : ""}
+      ${full && v.link && !v.adhd ? `<p class="small">${esc(v.link)}</p>` : ""}
+      ${v.adhd || v.asd ? `<dl class="v-ctx small">${v.you ? `<dt>Ваш результат</dt><dd><b>${esc(v.you)}</b></dd>` : ""}${v.adhd ? `<dt>Что это может значить для СДВГ</dt><dd>${esc(v.adhd)}</dd>` : ""}${v.asd ? `<dt>Что это может значить для РАС</dt><dd>${esc(v.asd)}</dd>` : ""}</dl>` : ""}
       ${full && v.tips.length ? `<p class="small"><b>Что может помочь:</b></p><ul class="small">${v.tips.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
       ${full ? `<p class="small muted">Норм для этого задания нет. Границы между уровнями — наш ориентир для чтения результата, а не клиническая норма, и по одному прохождению диагноз не ставится.</p>` : ""}</div>`;
   }
@@ -574,8 +628,27 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       RUN.list = pr.concat(ND.lab.loadTrials(seed));
     }
     if (task === "navon") RUN.list = ND.lab.navonTrials(seed);
+    if (task === "tap") { RUN.flashes = []; RUN.taps = []; }
+    if (task === "pitch") { RUN.rows = []; RUN.practiceLeft = 2; try { RUN.ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { RUN.ac = null; } }
+    if (task === "trace") { RUN.trials = []; RUN.pointer = null; }
     renderRunShell();
-    runNext();
+    if (TIMED.includes(task)) devCheck(() => runNext()); else runNext();
+  }
+  // B11: 1,5 секунды измеряем кадры и таймеры, результат сохраняется для заметки под заданием
+  function devCheck(then) {
+    const R = RUN; R.phase = "dev";
+    setStage(`<p class="small muted">Проверяем устройство, 2 секунды…</p>`); setControls("");
+    const frames = [], late = []; let last = null; const t0 = now();
+    const tick = (ts) => { if (RUN !== R) return; if (last != null) frames.push(ts - last); last = ts; if (now() - t0 < 1500) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+    const timer = (k) => { const want = now() + 20; later(() => { late.push(now() - want); if (k < 15) timer(k + 1); }, 20); };
+    timer(0);
+    later(() => {
+      if (RUN !== R) return;
+      const L = labData(); L.dev = L.dev || {};
+      L.dev[R.task] = ND.lab.devSummary(frames, late, { coarse: !!(window.matchMedia && matchMedia("(pointer: coarse)").matches), at: new Date().toISOString() });
+      R.phase = ""; then();
+    }, 1700);
   }
   function renderRunShell() {
     const T = TASKS[RUN.task];
@@ -593,6 +666,10 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     if (task === "tp") { L.tp = RUN.rows; L.tpCounted = RUN.counted; }
     if (task === "load") L.load = RUN.rows.filter((r) => !r.practice);
     if (task === "navon") L.navon = RUN.rows.filter((r) => !r.practice);
+    if (task === "span") L.span = RUN.rows.filter((r) => !r.practice);
+    if (task === "tap") L.tap = { flashes: RUN.flashes.map(Math.round), taps: RUN.taps.map((x) => ({ t: Math.round(x.t), phase: x.phase })) };
+    if (task === "pitch") { L.pitch = RUN.rows; if (RUN.ac) RUN.ac.close().catch(() => {}); }
+    if (task === "trace") L.trace = { trials: RUN.trials, pointer: RUN.pointer };
     L.when = L.when || {}; L.when[task] = new Date().toISOString();
     RUN = null; state.labTask = task; save(); render(); window.scrollTo(0, 0);
   }
@@ -646,7 +723,150 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
         onPaint(() => { if (RUN !== R) return; R.t0 = now(); R.phase = "go";
           later(() => { if (R.phase !== "go") return; navonAnswer(null); }, ND.lab.NAVON.MAX + 500); });
       }, 500);
+    } else if (R.task === "span") spanNext();
+    else if (R.task === "tap") tapNext();
+    else if (R.task === "pitch") pitchNext();
+    else if (R.task === "trace") traceNext();
+  }
+
+  // ── B7 «Удержать в уме» ──
+  function spanNext() {
+    const R = RUN, real = R.rows.filter((x) => !x.practice);
+    const nx = ND.lab.spanNext(real, R.seed);
+    if (!nx) return runFinish();
+    R.told = R.told || {};
+    if (!R.told[nx.dir]) {
+      R.told[nx.dir] = true; R.phase = "pause"; setCount(nx.dir === "f" ? "часть 1 из 2" : "часть 2 из 2");
+      R.cur = { dir: nx.dir, len: 2, seq: [3 + Math.floor(Math.random() * 3), 7 + Math.floor(Math.random() * 3)], practice: true };
+      setStage(`<p class="tp-goal">${nx.dir === "f" ? "Вводите цифры <b>в том же порядке</b>" : "Теперь вводите цифры <b>в обратном порядке</b>: с последней до первой"}</p><p class="small muted">Сначала пример из 2 цифр.${nx.dir === "b" ? " Например, 3 7 нужно ввести как 7 3." : ""}</p>`);
+      setControls(`<button class="btn primary" data-run="go">Начать</button>`); return;
     }
+    if (!R.cur) R.cur = nx;
+    const c = R.cur;
+    setCount(c.practice ? "пример" : `${c.dir === "f" ? "прямой" : "обратный"} порядок · ${c.len} цифр`);
+    R.phase = "show"; R.ans = []; setControls(""); setStage(`<span class="fix">+</span>`);
+    c.seq.forEach((d, k) => {
+      later(() => setStage(`<span class="span-d">${d}</span>`), 600 + k * (ND.lab.SPAN.ON + ND.lab.SPAN.OFF));
+      later(() => setStage(``), 600 + k * (ND.lab.SPAN.ON + ND.lab.SPAN.OFF) + ND.lab.SPAN.ON);
+    });
+    later(() => { R.phase = "input"; spanInputView(); }, 600 + c.seq.length * (ND.lab.SPAN.ON + ND.lab.SPAN.OFF));
+  }
+  function spanInputView() {
+    const R = RUN, c = R.cur;
+    setStage(`<p class="span-ans mono">${Array.from({ length: c.len }, (_, k) => (R.ans[k] != null ? R.ans[k] : "_")).join(" ")}</p><p class="small muted">${c.dir === "f" ? "В том же порядке" : "В обратном порядке"}</p>`);
+    setControls(`<div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => `<button class="dd-opt" data-run="sp-d" data-v="${d}"><b>${d}</b></button>`).join("")}
+      <button class="btn ghost" data-run="sp-del">Стереть</button><button class="btn primary" data-run="sp-ok" ${R.ans.length === c.len ? "" : "disabled"}>Готово</button></div>`);
+  }
+  function spanInput(kind, v) {
+    const R = RUN, c = R.cur; if (R.phase !== "input" || !c) return;
+    if (kind === "sp-d" && R.ans.length < c.len) R.ans.push(+v);
+    if (kind === "sp-del") R.ans.pop();
+    if (kind === "sp-ok" && R.ans.length === c.len) {
+      const want = c.dir === "f" ? c.seq : [...c.seq].reverse(), ok = want.every((d, k) => d === R.ans[k]);
+      R.rows.push({ dir: c.dir, len: c.len, seq: c.seq, ans: [...R.ans], ok, practice: !!c.practice });
+      R.phase = "fb"; R.cur = null; setControls("");
+      setStage(c.practice ? `<span class="rt-fb">${ok ? "Верно" : `Нужно было: ${want.join(" ")}`}</span>` : `<span class="rt-fb">Записано</span>`);
+      later(() => runNext(), c.practice && !ok ? 1800 : 700); return;
+    }
+    spanInputView();
+  }
+
+  // ── B8 «В ритм» ──
+  function tapNext() {
+    const R = RUN, T = ND.lab.TAP;
+    if (!R.told) { R.told = true; R.phase = "pause"; setStage(`<p class="tp-goal">Стучите вместе с миганием</p><p class="small muted">После ${T.SYNC} миганий кружок погаснет: продолжайте в том же темпе.</p>`); setControls(`<button class="btn primary" data-run="go">Начать</button>`); return; }
+    R.phase = "sync"; setControls(`<p class="small muted">Пробел или касание серой области</p>`);
+    setStage(`<span class="tap-dot" id="tap-dot"></span><p class="small muted tap-left" id="tap-left"></p>`);
+    const dot = document.getElementById("tap-dot"); let next = null, k = 0;
+    const loop = (ts) => {
+      if (RUN !== R || R.phase === "done") return;
+      if (next == null) next = ts + 600;
+      if (k < T.SYNC && ts >= next) { dot.classList.add("on"); R.flashes.push(ts); k++; next += T.ISI; const off = ts; later(() => dot.classList.remove("on"), 100); }
+      if (k >= T.SYNC && R.phase === "sync" && ts >= R.flashes[R.flashes.length - 1] + T.ISI / 2) { R.phase = "cont"; tapLeft(); later(tapWatch, 3000); }
+      requestAnimationFrame(loop);
+    };
+    requestAnimationFrame(loop);
+  }
+  const TAP_NEED = () => ND.lab.TAP.CONT + ND.lab.TAP.CSKIP;
+  function tapLeft() { const el = document.getElementById("tap-left"), n = RUN.taps.filter((x) => x.phase === "cont").length; if (el) el.textContent = RUN.phase === "cont" ? `Сами, тем же темпом: осталось ${Math.max(0, TAP_NEED() - n)}` : ""; }
+  function tapWatch() { const R = RUN; if (!R || R.task !== "tap" || R.phase !== "cont") return; const last = R.taps.length ? R.taps[R.taps.length - 1].t : 0; if (now() - last > 2500) { R.phase = "done"; runFinish(); } else later(tapWatch, 500); }
+  function tapPress() {
+    const R = RUN; if (R.phase !== "sync" && R.phase !== "cont") return;
+    R.taps.push({ t: now(), phase: R.phase });
+    if (R.phase === "cont") { tapLeft(); if (R.taps.filter((x) => x.phase === "cont").length >= TAP_NEED()) { R.phase = "done"; runFinish(); } }
+  }
+
+  // ── B9 «Слух на высоту звука» ──
+  function tone(ac, f, at) {
+    const o = ac.createOscillator(), g = ac.createGain(), d = ND.lab.PITCH.TONE / 1000;
+    o.type = "sine"; o.frequency.value = f; o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(0.2, at + 0.015); g.gain.setValueAtTime(0.2, at + d - 0.015); g.gain.linearRampToValueAtTime(0, at + d);
+    o.start(at); o.stop(at + d + 0.02);
+  }
+  function pitchNext() {
+    const R = RUN, P = ND.lab.PITCH;
+    if (!R.ac) { setStage(`<p>Браузер не даёт воспроизвести звук. Попробуйте другой браузер.</p>`); setControls(""); R.phase = "x"; return; }
+    if (!R.told) { R.told = true; R.phase = "pause"; setStage(`<p class="tp-goal">Наденьте наушники и проверьте громкость</p><p class="small muted">Звук должен быть отчётливым, но не громким.</p>`); setControls(`<button class="btn" data-run="pt-test">Прослушать пример</button> <button class="btn primary" data-run="go">Слышно, начать</button>`); return; }
+    const st = ND.lab.pitchState(R.rows);
+    if (!R.practiceLeft && st.done) return runFinish();
+    const delta = R.practiceLeft ? 20 : st.delta, base = 800 + Math.random() * 450, hiFirst = Math.random() < 0.5;
+    const f1 = hiFirst ? base * (1 + delta / 100) : base, f2 = hiFirst ? base : base * (1 + delta / 100);
+    R.cur = { delta, hiFirst, base }; R.phase = "play";
+    setCount(R.practiceLeft ? "тренировка" : `пара ${st.n + 1}`);
+    setStage(`<p class="tp-goal">Слушайте…</p>`); setControls("");
+    if (R.ac.state === "suspended") R.ac.resume();
+    const t = R.ac.currentTime + 0.15, gap = (P.TONE + P.GAP) / 1000;
+    tone(R.ac, f1, t); tone(R.ac, f2, t + gap);
+    later(() => { R.phase = "ans"; setStage(`<p class="tp-goal">Какой звук выше?</p>`);
+      setControls(`<div class="dd-choice"><button class="dd-opt" data-run="pt-ans" data-v="1"><b>Первый выше</b><span>1 или ←</span></button><button class="dd-opt" data-run="pt-ans" data-v="2"><b>Второй выше</b><span>2 или →</span></button></div>`); }, 150 + (P.TONE * 2 + P.GAP) + 100);
+  }
+  function pitchAnswer(v) {
+    const R = RUN, c = R.cur; if (R.phase !== "ans") return;
+    const ok = (v === "1") === c.hiFirst; R.phase = "fb"; setControls("");
+    if (R.practiceLeft) R.practiceLeft--; else R.rows.push({ delta: Math.round(c.delta * 1000) / 1000, ok });
+    setStage(`<span class="rt-fb">${ok ? "Верно" : "Неверно"}</span>`);
+    later(() => runNext(), 600);
+  }
+
+  // ── B10 «Провести линию» ──
+  function traceNext() {
+    const R = RUN, T = ND.lab.TRACE;
+    if (R.trials.length >= T.N) return runFinish();
+    const i = R.trials.length, p = ND.lab.TRACE_PATHS[i % ND.lab.TRACE_PATHS.length];
+    setCount(`дорожка ${i + 1} из ${T.N}`); R.phase = "trace"; setControls(`<p class="small muted">Нажмите на зелёный кружок и ведите до красного, не отрывая</p>`);
+    setStage(`<canvas id="trace-cv" class="trace-cv" width="${T.W * 2}" height="${T.H * 2}" aria-label="Дорожка"></canvas>`);
+    const cv = document.getElementById("trace-cv"), g = cv.getContext("2d");
+    const tr = { path: i, pts: [], lifts: 0 }; let drawing = false, started = false;
+    const css = getComputedStyle(document.body), ink = css.getPropertyValue("--ink").trim() || "#222", acc = css.getPropertyValue("--accent").trim() || "#2a6";
+    const draw = () => {
+      g.setTransform(2, 0, 0, 2, 0, 0); g.clearRect(0, 0, T.W, T.H);
+      g.lineCap = "round"; g.lineJoin = "round";
+      const line = (w, c) => { g.beginPath(); for (let x = T.X0; x <= T.X1; x += 2) { const y = ND.lab.traceY(p, x); x === T.X0 ? g.moveTo(x, y) : g.lineTo(x, y); } g.lineWidth = w; g.strokeStyle = c; g.stroke(); };
+      line(T.HALF * 2, "rgba(127,127,127,0.25)"); line(1, "rgba(127,127,127,0.6)");
+      g.fillStyle = "#3a9d5d"; g.beginPath(); g.arc(T.X0, ND.lab.traceY(p, T.X0), 11, 0, 7); g.fill();
+      g.fillStyle = "#c8553d"; g.beginPath(); g.arc(T.X1, ND.lab.traceY(p, T.X1), 11, 0, 7); g.fill();
+      if (tr.pts.length) { g.beginPath(); tr.pts.forEach((q, k) => (k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]))); g.lineWidth = 3; g.strokeStyle = acc || ink; g.stroke(); }
+    };
+    draw();
+    const pos = (e) => { const b = cv.getBoundingClientRect(); return [((e.clientX - b.left) / b.width) * T.W, ((e.clientY - b.top) / b.height) * T.H]; };
+    cv.addEventListener("pointerdown", (e) => {
+      if (RUN !== R || R.phase !== "trace") return;
+      const [x, y] = pos(e), lastP = tr.pts[tr.pts.length - 1];
+      const near = !started ? Math.hypot(x - T.X0, y - ND.lab.traceY(p, T.X0)) < 30 : Math.hypot(x - lastP[0], y - lastP[1]) < 40;
+      if (!near) return;
+      e.preventDefault(); cv.setPointerCapture(e.pointerId); drawing = true; started = true; R.pointer = R.pointer || e.pointerType;
+      tr.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(now())]); draw();
+    });
+    cv.addEventListener("pointermove", (e) => {
+      if (!drawing) return;
+      const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+      for (const ev of evs.length ? evs : [e]) { const [x, y] = pos(ev); tr.pts.push([Math.round(x * 10) / 10, Math.round(y * 10) / 10, Math.round(now())]); }
+      draw();
+      const [x] = pos(e);
+      if (x >= T.X1) finish();
+    });
+    const finish = () => { if (!drawing) return; drawing = false; R.trials.push(tr); R.phase = "fb"; setControls(""); later(() => runNext(), 500); };
+    cv.addEventListener("pointerup", () => { if (!drawing) return; const lastP = tr.pts[tr.pts.length - 1]; if (lastP && lastP[0] >= T.X1 - 15) finish(); else { drawing = false; tr.lifts++; setControls(`<p class="small muted">Продолжите с того места, где остановились</p>`); } });
   }
   function rtFeedback(txt) {
     const R = RUN; R.phase = "fb"; setStage(`<span class="rt-fb">${txt}</span>`);
@@ -668,6 +888,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
   function runInput(kind, v) {
     const R = RUN; if (!R) return;
     if (R.task === "rt" && kind === "press") return rtPress();
+    if (R.task === "tap" && kind === "press") return tapPress();
     if (kind === "go" && R.phase === "pause") { R.phase = ""; runNext(); return; }
     if (R.task === "tp") {
       if (kind === "tp-start" && R.phase === "ready") { R.phase = "run"; R.t0 = now(); setStage(`<p class="tp-goal">Идёт отсчёт… Нажмите «Стоп», когда пройдёт <b>${R.list[R.i]} секунд</b></p>`); setControls(`<button class="btn primary big" data-run="tp-stop">Стоп</button>`); return; }
@@ -680,6 +901,10 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       if (kind === "ld-det" && R.phase === "det") { R.rows.push({ load: t.load, extra: t.extra, target: t.target, ans: R.ans, saw: v === "1", practice: !!t.practice }); R.phase = "fb"; setControls(""); later(() => { R.i++; runNext(); }, 250); return; }
     }
     if (R.task === "navon" && kind === "nv-ans") navonAnswer(v);
+    if (R.task === "span") spanInput(kind, v);
+    if (R.task === "tap" && kind === "press") tapPress();
+    if (R.task === "pitch" && kind === "pt-ans") pitchAnswer(v);
+    if (R.task === "pitch" && kind === "pt-test" && R.ac) { if (R.ac.state === "suspended") R.ac.resume(); tone(R.ac, 1000, R.ac.currentTime + 0.05); tone(R.ac, 1200, R.ac.currentTime + 0.7); }
   }
 
   // если вкладку свернули, таймеры браузера замедляются и время искажается: попытку не засчитываем, задание прерываем
@@ -691,7 +916,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     if (!RUN || state.view !== "lab") return;
     const b = e.target.closest("[data-run]");
     if (!b) return;
-    if (b.dataset.run === "stage") { if (RUN.task === "rt") { e.preventDefault(); runInput("press"); } return; }
+    if (b.dataset.run === "stage") { if (RUN.task === "rt" || RUN.task === "tap") { e.preventDefault(); runInput("press"); } return; }
     e.preventDefault(); runInput(b.dataset.run, b.dataset.v);
   });
   document.addEventListener("keydown", (e) => {
@@ -703,21 +928,51 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
     if (R.task === "load" && R.phase === "ans" && (c === "KeyX" || c === "KeyN")) { e.preventDefault(); return runInput("ld-ans", c === "KeyX" ? "X" : "N"); }
     if (R.task === "load" && R.phase === "det" && (c === "KeyY" || c === "KeyD" || c === "ArrowLeft" || c === "Digit1")) { e.preventDefault(); return runInput("ld-det", "1"); }
     if (R.task === "load" && R.phase === "det" && (c === "KeyN" || c === "ArrowRight" || c === "Digit2")) { e.preventDefault(); return runInput("ld-det", "0"); }
+    if (R.task === "tap" && (c === "Space" || c === "Enter") && R.phase !== "pause") { e.preventDefault(); return runInput("press"); }
+    if (R.task === "span" && R.phase === "input") {
+      const d = /^(Digit|Numpad)([1-9])$/.exec(c);
+      if (d) { e.preventDefault(); return runInput("sp-d", d[2]); }
+      if (c === "Backspace") { e.preventDefault(); return runInput("sp-del"); }
+      if (c === "Enter") { e.preventDefault(); return runInput("sp-ok"); }
+    }
+    if (R.task === "pitch" && R.phase === "ans" && (c === "Digit1" || c === "ArrowLeft" || c === "Numpad1")) { e.preventDefault(); return runInput("pt-ans", "1"); }
+    if (R.task === "pitch" && R.phase === "ans" && (c === "Digit2" || c === "ArrowRight" || c === "Numpad2")) { e.preventDefault(); return runInput("pt-ans", "2"); }
     if (R.task === "navon" && (c === "ArrowLeft" || c === "KeyY")) { e.preventDefault(); return runInput("nv-ans", "Н"); }
     if (R.task === "navon" && (c === "ArrowRight" || c === "KeyC")) { e.preventDefault(); return runInput("nv-ans", "С"); }
   });
 
+  // B12: «Слова и дела» — результаты заданий рядом с похожими вопросами анкеты
+  function labWD(L) {
+    const sums = {}, verdicts = {};
+    L = L || state.lab || {};
+    sums.probe = ND.lab.probeSummary(state.probe && state.probe.list); verdicts.probe = ND.lab.verdict("probe", sums.probe);
+    sums.dd = ND.lab.discount(L.dd || {}); verdicts.dd = ND.lab.verdict("dd", sums.dd);
+    for (const k of Object.keys(TASKS)) { const S = sumOf(k, L); sums[k] = S; verdicts[k] = S && S.done ? ND.lab.verdict(k, S) : null; }
+    return { rows: ND.views.wordsDeeds(state.R, sums, verdicts), sums, verdicts };
+  }
+  const TASK_TITLE = (k) => (k === "probe" ? "Где были ваши мысли" : k === "dd" ? "Сейчас или потом" : TASKS[k].title);
+  function wdHtml(rows) {
+    if (!rows.length) return "";
+    const lvl = (q) => (q >= ND.PARAMS.thetaHi ? "выражено" : q >= ND.PARAMS.thetaLo ? "частично" : "мало");
+    return `<h3>Слова и дела: анкета рядом с заданиями</h3>
+      <div class="tbl-wrap"><table class="wd"><thead><tr><th>Что сравниваем</th><th>В анкете</th><th>В задании</th><th></th></tr></thead><tbody>
+      ${rows.map((x) => `<tr><td>${esc(x.what)}<br><span class="small muted">${esc(TASK_TITLE(x.task))}</span></td><td>${lvl(x.q)} <span class="small muted mono">${pct(x.q)}</span></td><td>${esc(x.title)}</td><td class="${x.agree ? "agree" : "differ"}">${x.agree ? "совпадает" : "расходится"}</td></tr>`).join("")}
+      </tbody></table></div>
+      <p class="small muted">«В анкете» — средняя выраженность похожих вопросов (${[...new Set(rows.flatMap((x) => x.items))].length} вопросов, например «${esc(rows[0].items[0].replace(/\.$/, ""))}»). Расхождение — не ошибка и не повод сомневаться в ответах. Анкета описывает, как вы справляетесь в жизни за месяцы, а задание — как вы сработали за 3 минуты в тишине, когда всё внимание на нём. Связь между такими опросниками и заданиями в исследованиях слабая (Toplak, West & Stanovich, 2013). Частая картина при СДВГ: в жизни трудно, а в коротком интересном задании получается хорошо.</p>`;
+  }
   function labBlock() {
     if (!ND.lab) return "";
     const PS = ND.lab.probeSummary(state.probe && state.probe.list), D = ND.lab.discount((state.lab || {}).dd || {});
     const done = Object.keys(TASKS).filter((k) => sumOf(k) && sumOf(k).done);
     const rest = Object.keys(TASKS).filter((k) => !done.includes(k)).map((k) => `«${TASKS[k].title}»`);
+    const WD = labWD();
     return `<section class="block lab-block"><h2>Лаборатория <span class="tag">эксперимент</span></h2>
-      <p class="muted">Необязательные мини-задания. Они не входят в баллы, критерии и общий вывод: это любопытные наблюдения, а не тесты с нормами.</p>
+      <p class="muted">Необязательные мини-задания. Они не входят в баллы, критерии и общий вывод: это наблюдения о вашем стиле, а не тесты с нормами. Под каждым выводом написано, что такой результат может значить для СДВГ и для РАС по данным исследований. Ни одно задание не отличает РАС от СДВГ надёжно и не ставит диагноз: смотрите на них вместе с анкетой.</p>
       ${probeFull(PS, false)}
       ${D.complete ? ddFull(D, false) : `<p class="small">Задание «Сейчас или потом»: 20 выборов между деньгами сегодня и позже, около 2 минут.</p>`}
       ${done.map((k) => taskHtml(k, sumOf(k), false)).join("")}
-      ${rest.length ? `<p class="small">Ещё задания на 2–3 минуты: ${rest.join(", ")}.</p>` : ""}
+      ${wdHtml(WD.rows)}
+      ${rest.length ? `<p class="small">Ещё задания на 1–4 минуты: ${rest.join(", ")}.</p>` : ""}
       <div class="row no-print"><button class="btn" data-act="lab">Открыть лабораторию</button></div></section>`;
   }
   function renderLab() {
@@ -770,6 +1025,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
           ${Object.entries(TASKS).map(([k, T]) => card(k, T.title, T.what, T.time, sumOf(k).done)).join("")}
         </ul>
         ${probeFull(ND.lab.probeSummary(state.probe && state.probe.list), true)}
+        ${wdHtml(labWD().rows)}
         <div class="nav"><button class="btn ghost" data-act="lab-back">Назад</button></div>`;
     }
     app.innerHTML = `<div class="wrap"><div class="card lab">${pix("strengths", "pix-q")}${body}</div></div>`;
@@ -907,6 +1163,87 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       <div class="meter"><i class="child" style="width:${pct(child)}%"></i><b style="left:${pct(P.thetaLo)}%"></b><b style="left:${pct(P.thetaHi)}%"></b></div></div>`;
   }
 
+  // ───────── v0.13: новые взгляды на ответы (src/views.js). На баллы и вывод не влияют ─────────
+  const lvlWord = (s) => (s == null ? "—" : s >= ND.PARAMS.thetaHi ? "выражено" : s >= ND.PARAMS.thetaLo ? "заметно" : "слабо или нет");
+  function sensoryBlock(SN) {
+    if (SN.answered < 3) return "";
+    const row = (x) => x.now == null ? "" : `<tr><td><b>${esc(x.label)}</b>${x.top.length ? `<br><span class="small muted">${x.top.map(esc).join("; ")}</span>` : ""}</td>
+      <td>${meter(x.now, x.child == null ? 0 : x.child)}</td><td class="small">${lvlWord(x.now)} <span class="mono muted">${pct(x.now)}</span></td>
+      <td>${x.types.map((t) => `<span class="chan-type ${t === "hypo" ? "hypo" : ""}">${esc(ND.views.TYPE_LABEL[t])}</span>`).join(" ") || `<span class="muted small">—</span>`}</td></tr>`;
+    const strong = SN.strong.map((x) => x.label.toLowerCase());
+    const pitch = SN.pitch == null ? "" : `<p class="small">Задание «Слух на высоту звука»: вы различали тоны, отличающиеся на ${String(SN.pitch.toFixed(SN.pitch < 1 ? 2 : 1)).replace(".", ",")}%. ${SN.pitch < 0.6 ? "Это очень тонкий слух. У части аутичных людей различение высоты звука лучше среднего (Bonnel et al., 2003), и это часто идёт рядом с чувствительностью к звукам." : "Это обычный диапазон, особой остроты слуха задание не показало. Чувствительность к звукам в жизни бывает и без неё: «громко и неприятно» и «тонко различаю» — разные вещи."}</p>`;
+    return `<section class="block"><h2>Сенсорный паспорт</h2>
+      <p class="muted">Ваши ответы о восприятии, разложенные по каналам: что ощущается слишком сильно, что слабо и каких ощущений вы ищете. ${strong.length ? `Сильнее всего: ${esc(strong.join(", "))}.` : "Ни один канал не выделяется."}</p>
+      <div class="legend"><span><i class="sw"></i>сейчас</span><span><i class="sw child"></i>в детстве</span></div>
+      <div class="tbl-wrap"><table><thead><tr><th>Канал</th><th>Выраженность</th><th>Сейчас</th><th>Тип реакции</th></tr></thead><tbody>${SN.rows.map(row).join("")}</tbody></table></div>
+      ${pitch}
+      <p class="small muted">Зачем: такую таблицу удобно показать близким, на работе или врачу, чтобы договориться о простых изменениях среды (наушники, свет, одежда, место в офисе). Для РАС необычная сенсорная реакция — один из четырёх признаков группы B в DSM-5-TR, причём засчитывается и повышенная, и пониженная чувствительность. При СДВГ необычная сенсорная реакция у взрослых тоже встречается чаще, даже без аутичных черт (Bijlenga et al., 2017), но в критерии СДВГ она не входит. Разбор по каналам и типам реакции — как в Glasgow Sensory Questionnaire (Robertson & Simmons, 2013). Выраженность считается по тем же ответам, что и критерий B4, но в отчёте не суммируется заново: на баллы не влияет.</p></section>`;
+  }
+  function efBlock(F, E) {
+    if (F.rows.length < 3) return "";
+    const grp = F.first && (ND.SUPPORT || []).find((g) => g.key === F.first.support && g.when(E, state.R));
+    const row = (x) => `<li><div class="row" style="justify-content:space-between"><b>${esc(x.label)}</b><span class="small"><span class="muted">${lvlWord(x.now)}</span> <span class="mono">${pct(x.now)}</span></span></div>
+      <div class="meter"><i style="width:${pct(x.now)}%"></i></div><span class="small muted">${esc(x.what)}${x.top.length ? `. Сильнее всего: ${x.top.map((t) => `«${esc(t.replace(/\.$/, ""))}»`).join(", ")}` : ""}</span></li>`;
+    return `<section class="block"><h2>Профиль исполнительных функций</h2>
+      <p class="muted">Исполнительные функции — это «диспетчер» мозга: планировать, помнить о деле в нужный момент, останавливаться, начинать неинтересное, успокаиваться. Здесь ваши ответы разложены по пяти областям модели Р. Баркли. Это помогает увидеть, где трудность на самом деле: «плохо с вниманием» часто оказывается трудностью с временем или с тем, чтобы начать.</p>
+      <ul class="sup">${F.rows.map(row).join("")}</ul>
+      ${F.first ? `<div class="flag"><b>С чего начать: ${esc(F.first.label.toLowerCase())}</b><span>Это самая выраженная область, с неё разумно начинать подбирать опоры. ${grp ? `Подходящие методики собраны в блоке «Что может помочь», раздел «${esc(grp.label)}»: ${grp.items.slice(0, 2).map((x) => esc(x.t.charAt(0).toLowerCase() + x.t.slice(1))).join("; ")}.` : ""}</span></div>` : `<p class="small">Ни одна область не выражена.</p>`}
+      <p class="small muted">Для СДВГ: Р. Баркли описывает СДВГ прежде всего как трудность исполнительных функций в повседневной жизни, и его шкала BDEFS оценивает их по самоотчёту (Barkley, 2011); короткие тесты улавливают это хуже и слабо связаны с самоотчётом (Toplak, West & Stanovich, 2013). Для РАС: трудности исполнительных функций тоже встречаются, в том числе гибкость и планирование, эффект умеренный (метаанализ Demetriou et al., 2018). Профиль сам по себе РАС и СДВГ не различает. Шкала BDEFS коммерческая и здесь не используется; распределение наших вопросов по областям — наше. На баллы не влияет.</p></section>`;
+  }
+  function wantBlock(W, E) {
+    if (!W.rows.length) return "";
+    const lowMood = E.scales.PHQ9 && E.scales.PHQ9.positive;
+    const text = W.kind === "want" ? "В основном вам хочется общаться, но это даётся трудно. Значит, трудность не в нежелании, а в том, как устроено общение: правила, темп, усталость, тревога. Это важно для того, что поможет: не «заставить себя хотеть», а сделать общение доступнее (свои люди, общие интересы, понятные правила, время на восстановление)."
+      : W.kind === "content" ? "В основном вам и так хорошо: меньше общения — ваш выбор, а не потеря. Это не проблема и не признак болезни сам по себе. Для РАС учитывается трудность, а не количество общения; если меньший интерес к людям вам не мешает, помощь здесь не нужна."
+      : "Ответы разные: в одних ситуациях общения хочется, в других нет. Так бывает часто, и это стоит обсудить подробнее: где именно хочется, но не получается.";
+    return `<section class="block"><h2>Общение: трудно или не хочется?</h2>
+      <p>${esc(text)}</p>
+      <div class="tbl-wrap"><table><tbody>${W.rows.map((x) => `<tr><td>${esc(x.t)}<br><span class="small muted">${esc(x.q)}</span></td><td><b>${esc(x.label)}</b></td></tr>`).join("")}</tbody></table></div>
+      ${lowMood && W.kind !== "want" ? `<div class="flag"><b>Учтите настроение</b><span>По PHQ-9 у вас от 10 баллов. Потеря интереса к людям может быть признаком подавленности, а не чертой характера. Если раньше общения хотелось больше, расскажите об этом врачу.</span></div>` : ""}
+      <p class="small muted">Почему спрашиваем: долго считалось, что аутичным людям общение неинтересно. Сейчас известно, что многие хотят дружбы, но им трудно (Jaswal & Akhtar, 2019; у этой работы есть и критика). Для СДВГ трудность общения чаще связана с импульсивностью и вниманием (перебиваю, теряю нить), а желание общаться обычно есть. Ответы на этот вопрос в баллы и критерии не входят.</p></section>`;
+  }
+  function compensationBlock(K) {
+    if (!K.n && !K.lighter.length) return "";
+    const AL = ["совсем нет", "скорее нет", "частично", "в основном да", "да, полностью"];
+    const li = (x) => `<li>${esc(x.t)} <span class="small muted">(${esc(x.area)}; в детстве «${AL[x.child] || x.child}», сейчас «${AL[x.now] || x.now}»)</span></li>`;
+    const lim = (a) => a.slice(0, 6).map(li).join("") + (a.length > 6 ? `<li class="muted small">и ещё ${a.length - 6}</li>` : "");
+    return `<section class="block"><h2>Где вы научились компенсировать</h2>
+      <p class="muted">Признаки, которые в детстве были выражены, а сейчас слабее. Это может значить, что вы переросли трудность, нашли обходной путь или просто научились её прятать.</p>
+      ${K.learned.length ? `<h3>Сейчас почти не мешает: ${K.learned.length}</h3><ul class="small stack">${lim(K.learned)}</ul>` : ""}
+      ${K.effort.length ? `<h3>Слабее, но держится на усилии: ${K.effort.length}</h3><p class="small">Вы ответили, что это не видно со стороны или прячете его с усилием.</p><ul class="small stack">${lim(K.effort)}</ul>` : ""}
+      ${K.lighter.length ? `<h3>Просто стало легче: ${K.lighter.length}</h3><ul class="small stack">${lim(K.lighter)}</ul>` : ""}
+      ${K.areas.length ? `<p class="small">Больше всего компенсации: ${esc(K.areas.map(([a, n]) => `${a} (${n})`).join(", "))}.</p>` : ""}
+      ${K.effort.length && (K.cost.fatigue || K.cost.burnout) ? `<div class="flag"><b>У компенсации есть цена</b><span>Вы также отметили ${[K.cost.fatigue && "сильную усталость после общения", K.cost.burnout && "периоды истощения"].filter(Boolean).join(" и ")}. Стратегии, которые требуют постоянного усилия, со временем могут приводить к выгоранию.</span></div>` : ""}
+      <p class="small muted">Для РАС: DSM-5-TR прямо допускает, что признаки «могут маскироваться выученными стратегиями в дальнейшей жизни», поэтому для диагноза важен детский период. Компенсация помогает в работе и отношениях, но связана с усталостью, тревогой и поздним диагнозом (Livingston, Shah & Happé, 2019). Для СДВГ: у взрослых гиперактивность часто уменьшается, а невнимательность остаётся; многие держатся на внешних опорах и дедлайнах (Biederman, Mick & Faraone, 2000: с возрастом симптомы гиперактивности снижаются быстрее, чем невнимательности). Блок показывает изменения в ответах и не меняет баллы.</p></section>`;
+  }
+  function thousandBlock(E) {
+    const T = ND.views.thousand(), A = E.legacy.ASRS;
+    const cls = [];
+    for (let i = 0; i < T.N; i++) cls.push(i < T.tp ? "tp" : i < T.sick ? "fn" : i < T.sick + T.fp ? "fp" : "tn");
+    const g = (c) => `<g class="${c}">${cls.map((k, i) => (k === c ? `<circle cx="${(i % 40) * 10 + 5}" cy="${Math.floor(i / 40) * 10 + 5}" r="3.6"/>` : "")).join("")}</g>`;
+    const you = A.partAPositive == null ? "Вы ответили не на все 6 вопросов части A, поэтому ваш результат по ней не посчитан."
+      : A.partAPositive ? `Ваш пересчёт части A — ${A.partA} из 6, то есть положительный скрининг. На картинке вы среди ${T.tp + T.fp} закрашенных цветом: большинство из них действительно имеют СДВГ.`
+      : `Ваш пересчёт части A — ${A.partA} из 6, ниже порога. На картинке вы среди серых и жёлтых точек: у большинства из них СДВГ нет, но ${T.fn} человек с СДВГ скрининг тоже не заметил.`;
+    return `<section class="block"><h2>Что значит положительный скрининг: 1000 человек</h2>
+      <p class="muted">Пример на исходном тесте ASRS (часть A, 6 вопросов), а не на ND-Screen: для ND-Screen таких цифр пока нет. Возьмём 1000 случайных взрослых.</p>
+      <svg class="icons1000" viewBox="0 0 400 250" role="img" aria-label="1000 точек: ${T.tp} человек с СДВГ и положительным скринингом, ${T.fn} с СДВГ, но отрицательным, ${T.fp} без СДВГ с положительным, остальные без СДВГ">${["tn", "fp", "fn", "tp"].map(g).join("")}</svg>
+      <div class="i-legend"><span><i style="background:#d0643c"></i>СДВГ, скрининг положительный: ${T.tp}</span><span><i style="background:#d29a2a"></i>СДВГ, скрининг пропустил: ${T.fn}</span><span><i style="background:var(--accent)"></i>нет СДВГ, но скрининг положительный: ${T.fp}</span><span><i style="background:color-mix(in srgb, var(--muted) 35%, transparent)"></i>нет СДВГ, скрининг отрицательный: ${T.tn}</span></div>
+      <p>Из ${T.tp + T.fp} человек с положительным скринингом СДВГ есть у ${T.tp} (примерно ${Math.round(T.ppv * 100)}%). Ещё ${T.fn} из ${T.sick} человек с СДВГ скрининг не заметил. ${esc(you)}</p>
+      <p class="small muted">Если вы проходите анкету, потому что подозреваете у себя СДВГ, ваша исходная вероятность выше, чем у случайного человека, и положительный результат значит больше. Поэтому скрининг — повод для очной оценки, а не диагноз в обе стороны. Цифры: ASRS часть A — чувствительность 68,7%, специфичность 99,5% (Kessler et al., 2005); стойкий СДВГ у взрослых — 2,58% (Song et al., 2021). Картинка с точками вместо процентов: Gigerenzer & Hoffrage, 1995.</p></section>`;
+  }
+  function nextSteps(E) {
+    const S = [], asd = E.asd, adhd = E.adhd, SC = E.scales;
+    if (E.scales.safety) S.push(["Сначала — безопасность", "Вы отметили мысли о смерти или самоповреждении. Если сейчас тяжело, позвоните 112 или в службу психологической помощи. Это важнее всего остального в отчёте."]);
+    if ((SC.PHQ9 && SC.PHQ9.positive) || (SC.GAD7 && SC.GAD7.positive)) S.push(["Обсудите настроение и тревогу", "По PHQ-9 или GAD-7 у вас от 10 баллов. Тревога и подавленность лечатся и сами по себе могут давать трудности со вниманием и общением. Скажите о них врачу в первую очередь."]);
+    if (asd.level !== "none") S.push(["Проверка РАС", "Взрослым обычно проводят наблюдение ADOS-2 (модуль 4) и интервью о детстве с родителем или человеком, знавшим вас ребёнком (например, ADI-R). Ищите психиатра или клинического психолога, который работает со взрослыми с РАС."]);
+    if (adhd.level !== "none") S.push(["Проверка СДВГ", "Обычно проводят структурированное интервью DIVA-5, лучше вместе с близким человеком. Если сохранились школьные характеристики или дневники, возьмите их: признаки должны быть до 12 лет."]);
+    E.differential.filter((d) => d.scale !== "PHQ9" && d.scale !== "GAD7").forEach((d) => S.push([d.label, d.note]));
+    if (S.length || asd.level !== "none" || adhd.level !== "none") S.push(["Возьмите с собой отчёт", "Кнопка «Отчёт для специалиста» ниже собирает всё на одну страницу в привычном врачу виде. Его можно распечатать или сохранить в PDF."]);
+    if (!S.length) S.push(["Выраженных признаков нет", "По ответам признаков РАС и СДВГ немного. Если трудности в жизни всё же есть, их стоит обсудить со специалистом: анкета охватывает не всё."]);
+    S.push(["Пока ждёте приёма", "Посмотрите блок «Что может помочь»: там методики с доказанной пользой, которые не требуют диагноза."]);
+    return `<section class="block"><h2>Что дальше</h2><ol class="stack">${S.map(([t, x]) => `<li><b>${esc(t)}.</b> ${esc(x)}</li>`).join("")}</ol></section>`;
+  }
+
   function renderReport() {
     const E = ND.scoring.evaluate(state.R);
     const opened = openItems();
@@ -970,6 +1307,14 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
 
         ${radarBlock(E)}
 
+        ${sensoryBlock(ND.views.sensory(state.R, ND.lab.pitchSummary((state.lab || {}).pitch)))}
+
+        ${efBlock(ND.views.ef(state.R), E)}
+
+        ${wantBlock(ND.views.want(state.R), E)}
+
+        ${compensationBlock(ND.views.compensation(state.R))}
+
         ${maskMapBlock(ND.insights.maskMap(E, state.R))}
 
         ${consistencyBlock(E.validity)}
@@ -1014,12 +1359,16 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
 
         ${legacyBlock(E.legacy)}
 
+        ${thousandBlock(E)}
+
         <section class="block">
           <h2>Влияние на жизнь</h2>
           <div class="tbl-wrap"><table><thead><tr><th>Сфера</th><th>Сейчас</th><th>В детстве</th></tr></thead><tbody>${fRows}</tbody></table></div>
         </section>
 
         ${notes ? `<section class="block"><h2>Ваши ответы своими словами</h2><ul class="stack">${notes}</ul></section>` : ""}
+
+        ${nextSteps(E)}
 
         <section class="block"><h2>Пробелы</h2><ul class="stack muted">${gaps.map((g) => `<li>${esc(g)}</li>`).join("")}</ul></section>
 
@@ -1345,6 +1694,14 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       ...E.differential.map((d) => `Флаг: ${d.label}`),
       ...(() => { const H = ND.insights.history(state.R); return H.rows.length ? ["Раннее развитие и семья (со слов): " + H.rows.map((x) => `${x.t.toLowerCase()}: ${x.answer}`).join("; ")] : []; })(),
       ...(() => { const y = ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I === 0); return y.length && ND.scoring.overall(E).code !== "nt" ? [`Сопутствующие состояния: ${y.map((it) => it.t.replace(/\.$/, "")).join("; ")}`] : []; })(),
+      ...(() => { const SN = ND.views.sensory(state.R), F = ND.views.ef(state.R), K = ND.views.compensation(state.R), W = ND.views.want(state.R), o = [];
+        if (SN.strong.length) o.push("Сенсорика, сильнее всего: " + SN.strong.map((x) => `${x.label.toLowerCase()} ${pct(x.now)}`).join(", "));
+        if (F.first) o.push(`Исполнительные функции, самая выраженная область: ${F.first.label.toLowerCase()} ${pct(F.first.now)}`);
+        if (K.n) o.push(`Признаки детства, ослабевшие сейчас: компенсировано ${K.learned.length}, держится на усилии ${K.effort.length}`);
+        if (W.kind) o.push(`Общение: ${W.kind === "want" ? "хочется, но трудно" : W.kind === "content" ? "в основном и так хорошо" : "по-разному"}`);
+        const LW = labWD(); const vs = Object.entries(LW.verdicts).filter(([, v]) => v && v.tone !== "na");
+        if (vs.length) o.push("Лаборатория (не входит в баллы): " + vs.map(([k, v]) => `${TASK_TITLE(k)} — ${v.title.toLowerCase()}`).join("; "));
+        return o; })(),
       E.validity.length ? `Согласованность: ${E.validity.some((f) => f.severity === "hard") ? "противоречивые ответы" : "отдельные противоречия"}.` : "Согласованность: противоречий не найдено.",
       ...E.validity.flatMap((f) => [`  ${f.text}`, ...(f.details || []).flatMap((d) => ND.clinician.conflictText(d, state.R).map((x) => "    " + x))]),
     ];
@@ -1382,7 +1739,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
         { const first = ITEMS.findIndex((x) => open(x) && !answered(x)); state.idx = first === -1 ? 0 : first; }
         shownAt = Date.now(); save(); render(); return;
       case "resume": state.view = "q"; if (!open(ITEMS[state.idx])) state.idx = Math.max(0, nextOpen(state.idx, -1)); shownAt = Date.now(); save(); render(); return;
-      case "sample": { const L = ND.sampleLab(), look = state.look, anim = state.anim; state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [], probe: { seed: 1, list: L.probes }, lab: { dd: L.dd, rt: L.rt, tp: L.tp, load: L.load, navon: L.navon }, look, anim }; render(); window.scrollTo(0, 0); return; }
+      case "sample": { const L = ND.sampleLab(), look = state.look, anim = state.anim; state = { R: ND.sampleResponses(), idx: 0, view: "report", sample: true, seen: {}, breaks: [], probe: { seed: 1, list: L.probes }, lab: { dd: L.dd, rt: L.rt, tp: L.tp, load: L.load, navon: L.navon, span: L.span, tap: L.tap, pitch: L.pitch, trace: L.trace }, look, anim }; render(); window.scrollTo(0, 0); return; }
       case "practice": if (state.sample) state = load() || fresh(); state.view = "practice"; state.seen = state.seen || {}; state.breaks = state.breaks || []; save(); render(); window.scrollTo(0, 0); return;
       case "practice-skip": case "practice-done": {
         state.seen.practice = true; delete state.prR;
@@ -1463,6 +1820,7 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
       case "ctx": { const c = r.ctx || (r.ctx = []); const i = c.indexOf(b.dataset.v); i >= 0 ? c.splice(i, 1) : c.push(b.dataset.v); delete r.ctxUnk; r._open = true; break; }
       case "mask": r.mask = +b.dataset.v; delete r.maskUnk; r._open = true; break;
       case "harm": r.harm = +b.dataset.v; delete r.harmUnk; r._open = true; break;
+      case "want": r.want = +b.dataset.v; delete r.wantUnk; r._open = true; break;
       // «Не знаю» в дополнительном поле: поле считается без ответа и в баллы не идёт
       case "unk": { const f = b.dataset.v, k = f + "Unk"; r[k] = !r[k]; if (r[k]) delete r[f]; r._open = true; break; }
       case "na": r.na = !r.na; break;
@@ -1490,7 +1848,13 @@ ${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько 
             reactionTime: { raw: labState().rt || [], summary: ND.lab.rtSummary(labState().rt) },
             timeProduction: { raw: labState().tp || [], countedInHead: !!labState().tpCounted, summary: ND.lab.tpSummary(labState().tp) },
             perceptualLoad: { raw: labState().load || [], summary: ND.lab.loadSummary(labState().load) },
-            navon: { raw: labState().navon || [], summary: ND.lab.navonSummary(labState().navon) } } }, null, 2);
+            navon: { raw: labState().navon || [], summary: ND.lab.navonSummary(labState().navon) },
+            digitSpan: { raw: labState().span || [], summary: ND.lab.spanSummary(labState().span) },
+            tapping: { raw: labState().tap || null, summary: ND.lab.tapSummary(labState().tap) },
+            pitch: { raw: labState().pitch || [], summary: ND.lab.pitchSummary(labState().pitch) },
+            tracing: { raw: labState().trace || null, summary: ND.lab.traceSummary(labState().trace) },
+            device: labState().dev || {}, wordsVsDeeds: labWD().rows },
+          views: { note: "в баллы и критерии не входит", sensory: ND.views.sensory(state.R, sumOf("pitch")), executive: ND.views.ef(state.R), compensation: ND.views.compensation(state.R), socialWant: ND.views.want(state.R) } }, null, 2);
         if (embedded) { showBox(data); return; }
         const a = document.createElement("a");
         a.href = URL.createObjectURL(new Blob([data], { type: "application/json" }));

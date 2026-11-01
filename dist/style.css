@@ -366,3 +366,29 @@ table.week td:first-child { width: 3em; }
 .verdict.t-high { border-left-color: #d0643c; }
 .verdict.t-na { border-left-color: var(--muted); background: color-mix(in srgb, var(--muted) 12%, transparent); }
 .v-line { margin-top: 4px !important; }
+
+/* v0.13: новые задания лаборатории, контекст РАС/СДВГ в выводах, новые блоки отчёта */
+.v-ctx { margin: 6px 0 0; display: grid; gap: 2px; }
+.v-ctx dt { font-weight: 600; margin-top: 4px; }
+.v-ctx dd { margin: 0; }
+.dev-note { color: var(--warn); }
+.span-d { font: 700 4.5rem var(--font-mono); color: var(--ink); }
+.span-ans { font-size: 2rem; letter-spacing: 0.15em; margin: 0; }
+.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: 100%; max-width: 300px; }
+.keypad .dd-opt { padding: 12px 0; }
+.keypad .btn { width: 100%; }
+.lab-stage.t-tap { cursor: pointer; }
+.tap-dot { width: 84px; height: 84px; border-radius: 50%; background: color-mix(in srgb, var(--ink) 18%, var(--surface)); }
+.tap-dot.on { background: var(--accent); }
+.tap-left { position: absolute; bottom: 12px; left: 0; right: 0; margin: 0; }
+.trace-cv { width: 100%; max-width: 600px; aspect-ratio: 600 / 240; touch-action: none; display: block; cursor: crosshair; }
+.lab-stage.t-trace { touch-action: none; padding: 8px; }
+.wd td:nth-child(4) { white-space: nowrap; }
+.wd .agree { color: #2f7d55; } .wd .differ { color: var(--warn); }
+.chan-type { font-size: 0.72rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+.chan-type.hypo { background: var(--warn-soft); color: var(--warn); }
+.icons1000 { width: 100%; max-width: 520px; height: auto; display: block; }
+.icons1000 .tp { fill: #d0643c; } .icons1000 .fn { fill: #d29a2a; } .icons1000 .fp { fill: var(--accent); } .icons1000 .tn { fill: color-mix(in srgb, var(--muted) 35%, transparent); }
+.i-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.85rem; }
+.i-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.want-q .chips { margin-top: 6px; }
