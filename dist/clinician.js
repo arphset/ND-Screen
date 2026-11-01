@@ -15,7 +15,7 @@ ND.clinician = (function () {
     const per = (p) => {
       const x = r[p];
       if (!x) return "нет ответа";
-      if (x.unknown) return "не помнит";
+      if (x.unknown) return p === "now" ? "не знает" : "не помнит";
       if (x.I == null) return x.custom ? "только свой ответ" : "нет ответа";
       return U.I_LABELS[x.I].toLowerCase() + (x.F ? ", " + F[x.F].toLowerCase() : "");
     };

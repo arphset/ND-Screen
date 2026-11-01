@@ -22,10 +22,8 @@
   const embedded = (() => { try { return window.self !== window.top; } catch (e) { return true; } })();
 
   let state = load() || fresh();
-  // у вопросов без детства старые сохранённые ответы о детстве не нужны
-  for (const id of ND.NO_CHILD) if (state.R[id]) delete state.R[id].child;
-  // и частота у устойчивых черт: она больше не спрашивается и не учитывается
-  for (const id of ND.NO_FREQ) for (const p of ["now", "child"]) if (state.R[id] && state.R[id][p]) delete state.R[id][p].F;
+  // старые сохранённые ответы на поля, которые у пункта больше не спрашиваются (детство, частота, где, видно ли, мешает), не нужны
+  ND.normalizeR(state.R);
   state.seen = state.seen || {}; state.breaks = state.breaks || [];
   // экраны «пример вопроса» и «машина времени» не могут быть сохранены как текущие: после перезагрузки начинаем с вопроса
   if (state.view === "practice" || state.view === "recall" || state.view === "brk" || state.view === "probe") state.view = "q";
@@ -88,7 +86,7 @@
           <div><b>Насколько</b><span class="muted small">от «совсем нет» до «полностью», включая «частично»</span></div>
           <div><b>Как часто</b><span class="muted small">редко, иногда, часто, почти всегда</span></div>
           <div><b>Когда</b><span class="muted small">отдельно сейчас и в детстве до 12 лет</span></div>
-          <div><b>Своими словами</b><span class="muted small">если ни один вариант не подходит, опишите сами; есть и «не помню»</span></div>
+          <div><b>Своими словами</b><span class="muted small">если ни один вариант не подходит, опишите сами; есть и «не знаю» или «не помню»</span></div>
         </div>
         <ul class="muted small">
           <li>От ${ITEMS.filter((x) => !x.fu).length} до ${ITEMS.length} вопросов: уточняющие появляются, только если признак у вас есть. Примерно 25–45 минут. Можно прерваться: ответы сохраняются в этом браузере и никуда не отправляются.</li>
@@ -136,8 +134,9 @@
       ${it.id === "PHQ-9" && pr.I >= 1 ? safetyBlock() : ""}`;
   }
   // Сопутствующее состояние: только «да / нет», без периодов и дополнительных полей
-  const YESNO = ["Да", "Нет"];
-  const comorbQ = (r) => `<fieldset class="period"><legend>Есть ли это у вас сейчас или было раньше?</legend>${scaleBtns("now", (r.now || {}).I, YESNO, "I", "two")}</fieldset>`;
+  // «Не знаю» (v0.12.2): гипермобильность, синестезия, дислексия часто не диагностированы. В отчёте это «нет ответа».
+  const YESNO = ["Да", "Нет", "Не знаю"];
+  const comorbQ = (r) => `<fieldset class="period"><legend>Есть ли это у вас сейчас или было раньше?</legend>${scaleBtns("now", (r.now || {}).I, YESNO, "I", "three")}</fieldset>`;
   // Черта вне DSM: «нет / отчасти / да», у уточняющего вопроса свои варианты
   const TRAIT_OPTS = ["Нет, не про меня", "Отчасти", "Да, это про меня"];
   const traitQ = (it, r) => `<fieldset class="period"><legend>${it.opts ? "Ваш ответ" : "Насколько это про вас сейчас?"}</legend>${scaleBtns("now", (r.now || {}).I, it.opts || TRAIT_OPTS, "I", it.opts ? "two" : "three")}</fieldset>`;
@@ -151,15 +150,19 @@
 
   // Что значат средние варианты. «Скорее нет» по баллам остаётся ниже порога признака.
   const I_KEY = `<div class="scale-key small muted"><span>«Скорее нет» — в целом не про вас: бывает слабо или лишь изредка</span><span>«Частично» — есть заметно, но не во всём или не всегда</span></div>`;
+  // Про нынешнюю жизнь «не помню» звучит странно: в колонке «Сейчас» та же кнопка подписана «Не знаю»
+  const UNK_P = { now: "Не знаю", child: "Не помню" };
+  // У вопросов о сферах жизни в колонке «Сейчас» настоящее время
+  const dLabels = (p) => (p === "now" ? D_LABELS.map((l) => l.replace("Не мешали", "Не мешают")) : D_LABELS);
   function periodBlock(it, r, p) {
     const pr = r[p] || {};
     const isFunc = it.kind === "func";
     const val = isFunc ? pr.D : pr.I;
     let html = `<fieldset class="period"><legend>${PERIOD_LABEL[p]}</legend>`;
-    html += isFunc ? scaleBtns(p, val, D_LABELS, "D", "four") : scaleBtns(p, val, I_LABELS, "I") + I_KEY;
+    html += isFunc ? scaleBtns(p, val, dLabels(p), "D", "four") : scaleBtns(p, val, I_LABELS, "I") + I_KEY;
     html += `<div class="chips">
       <button class="chip" data-act="custom" data-p="${p}" aria-pressed="${!!pr.custom}">Свой ответ</button>
-      <button class="chip" data-act="unknown" data-p="${p}" aria-pressed="${!!pr.unknown}">Не помню</button></div>`;
+      <button class="chip" data-act="unknown" data-p="${p}" aria-pressed="${!!pr.unknown}">${UNK_P[p]}</button></div>`;
     if (pr.custom) html += `<div class="sub"><label class="sub-label" for="text-${it.id}-${p}">Опишите своими словами. Если можете, отметьте и вариант выше: тогда ответ попадёт в подсчёт баллов.</label>
       <textarea id="text-${it.id}-${p}" data-act="text" data-p="${p}" placeholder="Например: в детстве только в школе, дома нет">${esc(pr.text || "")}</textarea></div>`;
     if (!isFunc && !isSimple(it) && !it.noFreq && pr.I >= 2) {
@@ -177,13 +180,14 @@
     if (!r.now || !(r.now.I >= 2)) return "";
     const ctx = r.ctx || [];
     const unk = (f, on) => `<button class="chip" data-act="unk" data-v="${f}" aria-pressed="${!!on}">${UNK}</button>`;
+    const places = it.noAlone ? CTX.filter(([k]) => k !== "alone") : CTX;
     return `<div class="extras">
-        <div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${CTX.map(([k, l]) =>
-          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}${unk("ctx", r.ctxUnk)}</div></div>
+${it.noWhere ? "" : `<div class="sub"><span class="sub-label">Где проявляется (можно несколько)</span><div class="chips">${places.map(([k, l]) =>
+          `<button class="chip" data-act="ctx" data-v="${k}" aria-pressed="${ctx.includes(k)}">${l}</button>`).join("")}${unk("ctx", r.ctxUnk)}</div></div>`}
 ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли это со стороны? <span class="muted">Например, замечают ли другие, что вам трудно, или вы это прикрываете. Если к вопросу не подходит, пропустите.</span></span><div class="chips">${MASK.map((l, i) =>
           `<button class="chip" data-act="mask" data-v="${i}" aria-pressed="${r.mask === i}">${l}</button>`).join("")}${unk("mask", r.maskUnk)}</div></div>`}
-        <div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
-          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}${unk("harm", r.harmUnk)}</div></div>
+${it.noHarm ? "" : `<div class="sub"><span class="sub-label">Насколько это мешает сейчас?</span><div class="chips">${D_LABELS.map((l, i) =>
+          `<button class="chip" data-act="harm" data-v="${i}" aria-pressed="${r.harm === i}">${l.replace("Не мешали", "Не мешает")}</button>`).join("")}${unk("harm", r.harmUnk)}</div></div>`}
       </div>`;
   }
 
@@ -254,7 +258,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
     const out = [];
     const lvl = (p, w) => {
       const x = r[p] || {};
-      if (x.unknown) return `${w}: «Не помню». Так можно ответить, если правда не помните: вопрос просто не войдёт в подсчёт.`;
+      if (x.unknown) return `${w}: «${UNK_P[p]}». Так можно ответить, если правда не ${p === "now" ? "знаете" : "помните"}: вопрос просто не войдёт в подсчёт.`;
       if (x.I == null) return `${w}: пока нет ответа.`;
       const means = ["это совсем не про вас", "в целом не про вас: бывает слабо или изредка", "есть заметно, но не во всём или не всегда", "это скорее про вас", "это точно про вас"][x.I];
       return `${w}: «${I_LABELS[x.I]}» значит, что ${means}.${x.I >= 2 && !x.F ? " Ниже появился вопрос, как часто это бывает." : x.F ? ` Частота «${F_OPTS.find(([k]) => k === x.F)[1].toLowerCase()}» уточняет ответ: чем чаще, тем сильнее признак.` : ""}`;
@@ -1481,7 +1485,7 @@ ${it.noMask ? "" : `<div class="sub"><span class="sub-label">Видно ли э�
       case "export": {
         const data = JSON.stringify({ version: "0.4", exported: new Date().toISOString(), responses: state.R, result: ND.scoring.evaluate(state.R),
           traits: traitsList(state.R).map((x) => ({ key: x.key, label: x.T.label, level: x.lvl, evidence: x.T.ev, fromItems: !!x.derived })),
-          comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0 })),
+          comorbid: ITEMS.filter((it) => it.kind === "comorb" && state.R[it.id] && state.R[it.id].now && state.R[it.id].now.I != null).map((it) => ({ id: it.id, t: it.t, yes: state.R[it.id].now.I === 0, unknown: state.R[it.id].now.I === 2 })),
           lab: { note: "экспериментально, в баллы и критерии не входит", probes: labState().probes || [], probeSummary: ND.lab.probeSummary(labState().probes), discount: ND.lab.discount(labState().dd || {}),
             reactionTime: { raw: labState().rt || [], summary: ND.lab.rtSummary(labState().rt) },
             timeProduction: { raw: labState().tp || [], countedInHead: !!labState().tpCounted, summary: ND.lab.tpSummary(labState().tp) },
