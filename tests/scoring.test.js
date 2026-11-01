@@ -359,14 +359,14 @@ for (let k = 0; k < 300; k++) {
   {
     const it = ITEMS.find((x) => x.id === "A3-7");
     check("у вопросов без детства ответ о детстве не учитывается", it.noChild && ND.scoring.itemScore(it, { now: { I: 3 }, child: { I: 4, F: "always" } }, "child") === null);
-    check("вопросов без детства 4, все существуют", ND.NO_CHILD.size === 4 && [...ND.NO_CHILD].every((id) => ITEMS.some((x) => x.id === id)));
+    check("вопросов без детства 7, все существуют", ND.NO_CHILD.size === 7 && [...ND.NO_CHILD].every((id) => ITEMS.some((x) => x.id === id)));
   }
   {
     const it = ITEMS.find((x) => x.id === "B3-5");
     const sc = (r) => ND.scoring.itemScore(it, r, "now").s;
-    check("у устойчивых черт балл равен уровню, частота не влияет", sc({ now: { I: 3, F: "rare" } }) === 0.75 && sc({ now: { I: 4 } }) === 1 && ND.NO_FREQ.size === 14);
+    check("у устойчивых черт балл равен уровню, частота не влияет", sc({ now: { I: 3, F: "rare" } }) === 0.75 && sc({ now: { I: 4 } }) === 1 && ND.NO_FREQ.size === 18);
   }
-  check("поле маскировки убрано у 48 вопросов (37 + 11 «мне говорят»)", ND.NO_MASK.size === 48 && [...ND.NO_MASK].every((id) => ITEMS.some((x) => x.id === id && x.noMask)), ND.NO_MASK.size);
+  check("поле маскировки убрано у 55 вопросов (37 + 11 «мне говорят» + 7 в v0.12.2)", ND.NO_MASK.size === 55 && [...ND.NO_MASK].every((id) => ITEMS.some((x) => x.id === id && x.noMask)), ND.NO_MASK.size);
   const it = ITEMS.find((x) => x.id === "B4-5"), r = { now: { I: 2, F: "some" }, child: { I: 2 }, mask: 2 };
   check("старый ответ «скрываю» у такого вопроса не даёт поправки", ND.scoring.itemScore(it, r, "now").s === ND.scoring.itemScore(it, { ...r, mask: 0 }, "now").s);
 }
@@ -687,5 +687,23 @@ check("нет пояснений к несуществующим вопроса�
   check("выводы есть в отчёте для специалиста", /Выводы \(ориентир, не норма\)/.test(C.text));
 }
 
+
+// ── v0.12.2: доп. поля только там, где они уместны ──
+{
+  const all = (set, flag) => [...set].every((id) => ITEMS.some((x) => x.id === id && x[flag]));
+  check("без «где» 22 вопроса, все существуют", ND.NO_WHERE.size === 22 && all(ND.NO_WHERE, "noWhere"));
+  check("без «мешает» 19 вопросов, все существуют", ND.NO_HARM.size === 19 && all(ND.NO_HARM, "noHarm"));
+  check("«без где» не трогает пункты СДВГ (критерий C)", [...ND.NO_WHERE].every((id) => !ITEMS.find((x) => x.id === id).s));
+  check("«Наедине с собой» скрыто в вопросах об общении", ITEMS.find((x) => x.id === "A1-1").noAlone && !ITEMS.find((x) => x.id === "A2-8").noAlone);
+  // устаревшие поля из старых сохранений убираются и не влияют на баллы
+  const base = profile(uniform(3));
+  const dirty = JSON.parse(JSON.stringify(base));
+  for (const id of ND.NO_HARM) dirty[id].harm = 0;
+  for (const id of ND.NO_WHERE) dirty[id].ctx = ["home"];
+  const clean = ND.normalizeR(JSON.parse(JSON.stringify(dirty)));
+  check("normalizeR убирает поля, которые больше не спрашиваются", [...ND.NO_HARM].every((id) => clean[id].harm == null) && [...ND.NO_WHERE].every((id) => clean[id].ctx == null) && [...ND.NO_CHILD].every((id) => !clean[id].child));
+  const a = ev(dirty), b = ev(clean);
+  check("старое «не мешает» у нейтральных черт не входит в индекс", a.asd.index === b.asd.index && a.adhd.index === b.adhd.index, [a.asd.index, b.asd.index]);
+}
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);

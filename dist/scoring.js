@@ -175,7 +175,7 @@ ND.scoring = (function () {
     // 3. Отдельные вопросы против итоговых вопросов о жизни: по отдельным признакам «мешает заметно или сильно»,
     // а во всех сферах жизни «не мешали». Мягкий флаг: человек мог оценивать сферы по-другому.
     const spheres = Object.keys(ND.LIFE_SPHERES).map((f) => ans(f)).filter((r) => r && r.now && r.now.D != null);
-    const harmed = ND.ITEMS.filter((it) => !it.rev && !it.kind && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && r.harm >= 2; });
+    const harmed = ND.ITEMS.filter((it) => !it.rev && !it.kind && !it.noHarm && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && r.harm >= 2; });
     if (spheres.length >= 3 && ND.ITEMS.some((it) => { const r = ans(it.id); return r && r.harm != null; })) {
       checks++;
       if (harmed.length >= 3 && spheres.every((r) => r.now.D === 0))
@@ -187,7 +187,7 @@ ND.scoring = (function () {
 
     // 4. Камуфляж: в вопросах о маскировке почти везде «нет», но в вопросах об общении многое «не видно, скрываю с усилием».
     const camo = constructScore("CAMO", R, "now");
-    const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && r.mask === 2; });
+    const hidden = ND.ITEMS.filter((it) => it.c && /^ASD\.A/.test(it.c) && ND.eligible(it, R)).filter((it) => { const r = ans(it.id); return r && r.now && r.now.I >= 2 && !it.noMask && r.mask === 2; });
     if (camo.n >= 3) {
       checks++;
       if (camo.s < 0.25 && hidden.length >= 4) {
@@ -397,7 +397,7 @@ ND.scoring = (function () {
   // L4b: общий индекс 0–100 (экспериментальный, не откалиброван)
   // «Насколько мешает сейчас» по отдельным вопросам: доля и число вопросов с ответом «заметно» и «сильно»
   function harmOf(R, filter) {
-    const hs = ND.ITEMS.filter((it) => filter(it) && ND.eligible(it, R)).map((it) => R[it.id])
+    const hs = ND.ITEMS.filter((it) => filter(it) && !it.noHarm && ND.eligible(it, R)).map((it) => R[it.id])
       .filter((r) => r && !r.na && r.now && r.now.I >= 2 && r.harm != null).map((r) => r.harm);
     return { n: hs.length, n2: hs.filter((h) => h >= 2).length, mean: hs.length ? mean(hs) / 3 : 0 };
   }

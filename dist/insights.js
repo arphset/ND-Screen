@@ -99,7 +99,7 @@ ND.insights = (function () {
     const list = ND.ITEMS.filter((it) => (it.s || /^ASD\./.test(it.c || "")) && !it.noMask && !it.rev && ND.eligible(it, R)).map((it) => [it, R[it.id]])
       .filter(([, r]) => r && !r.na && r.now && r.now.I >= 2 && r.mask != null);
     const stat = (xs) => ({ n: xs.length, hidden: xs.filter(([, r]) => r.mask >= 1).length, effort: xs.filter(([, r]) => r.mask === 2).length, level: xs.length ? mean(xs.map(([, r]) => r.mask / 2)) : 0 });
-    const places = PLACES.map(([k, label]) => ({ key: k, label, ...stat(list.filter(([, r]) => (r.ctx || []).includes(k))) })).filter((x) => x.n);
+    const places = PLACES.map(([k, label]) => ({ key: k, label, ...stat(list.filter(([it, r]) => !it.noWhere && (r.ctx || []).includes(k))) })).filter((x) => x.n);
     const areas = AREAS.map(([label, f]) => ({ label, ...stat(list.filter(([it]) => f(it))) })).filter((x) => x.n);
     const top = list.filter(([, r]) => r.mask === 2).sort((a, b) => b[1].now.I - a[1].now.I).slice(0, 5).map(([it]) => it.t);
     const all = stat(list);
