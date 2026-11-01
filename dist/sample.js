@@ -58,6 +58,8 @@ ND.sampleResponses = function () {
     R[it.id] = b;
   });
   ND.normalizeR(R);
+  // «Хочется ли вам этого?» (v0.13): в подсчёт не входит
+  Object.entries({ "A1-1": 0, "A1-3": 0, "A3-1": 2, "A3-2": 0 }).forEach(([id, w]) => { if (R[id]) R[id].want = w; });
   // раннее развитие и семья (v0.10): в подсчёт не входит
   Object.assign(R, { "HX-1": { h: 0, rt: 4000 }, "HX-2": { h: 2, rt: 4000 }, "HX-3": { h: 0, rt: 4000 }, "HX-4": { h: 1, rt: 5000 },
     "HX-5": { h: [3, 5], rt: 6000 }, "HX-6": { h: [7], rt: 5000 }, "HX-7": { h: 1, rt: 4000 } });
@@ -88,5 +90,28 @@ ND.sampleTasks = function () {
   });
   const navon = ND.lab.navonTrials(9).filter((t) => !t.practice).map((t) => ({ block: t.block, big: t.big, small: t.small,
     ans: t.block === "global" ? t.big : t.small, rt: Math.round((t.block === "global" ? 560 : 520) + (t.big !== t.small ? 45 : 0) + 60 * g()) }));
-  return { rt, tp, tpCounted: false, load, navon };
+  // B7–B10 (v0.13): цифровой ряд, ритм, высота звука, линия
+  const span = [];
+  for (let k = 0; k < 40; k++) {
+    const nx = ND.lab.spanNext(span, 7); if (!nx) break;
+    const ok = nx.dir === "f" ? nx.len <= 6 || (nx.len === 7 && span.filter((x) => x.len === 7 && x.dir === "f").length === 0) : nx.len <= 4;
+    span.push({ dir: nx.dir, len: nx.len, seq: nx.seq, ans: ok ? (nx.dir === "f" ? nx.seq : [...nx.seq].reverse()) : nx.seq.slice(0, -1), ok });
+  }
+  const T = ND.lab.TAP, flashes = [], taps = [];
+  for (let i = 0; i < T.SYNC; i++) flashes.push(1000 + i * T.ISI);
+  for (let i = 0; i < T.SYNC; i++) taps.push({ t: Math.round(flashes[i] - 30 + 28 * g()), phase: "sync" });
+  let t = flashes[T.SYNC - 1];
+  for (let i = 0; i < T.CONT + 2; i++) { t += Math.round(T.ISI * 0.96 + 62 * g()); taps.push({ t, phase: "cont" }); }
+  const pitch = [];
+  for (let k = 0; k < ND.lab.PITCH.MAXN; k++) {
+    const st = ND.lab.pitchState(pitch); if (st.done) break;
+    const p = 0.5 + 0.5 / (1 + Math.pow(1.1 / st.delta, 2.5)); // психометрическая функция, порог около 1,1%
+    pitch.push({ delta: st.delta, ok: r() < p });
+  }
+  const TR = ND.lab.TRACE, trials = ND.lab.TRACE_PATHS.map((path, i) => {
+    const pts = []; let tt = 0;
+    for (let x = TR.X0; x <= TR.X1; x += 6) { tt += 22; pts.push([x, ND.lab.traceY(path, x) + TR.HALF * 0.55 * g(), tt]); }
+    return { path: i, pts, lifts: i === 1 ? 1 : 0, done: true };
+  });
+  return { rt, tp, tpCounted: false, load, navon, span, tap: { flashes, taps }, pitch, trace: { trials, pointer: "mouse" } };
 };

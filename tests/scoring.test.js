@@ -2,7 +2,7 @@
 const fs = require("fs");
 const path = require("path");
 global.window = global;
-for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js", "insights.js", "lab.js", "sprite.js", "music.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
+for (const f of ["items.js", "hints.js", "scoring.js", "sample.js", "clinician.js", "support.js", "explain.js", "insights.js", "views.js", "lab.js", "sprite.js", "music.js"]) eval(fs.readFileSync(path.join(__dirname, "..", "src", f), "utf8"));
 
 let failed = 0, passed = 0;
 function check(name, cond, info) {
@@ -704,6 +704,41 @@ check("нет пояснений к несуществующим вопроса�
   check("normalizeR убирает поля, которые больше не спрашиваются", [...ND.NO_HARM].every((id) => clean[id].harm == null) && [...ND.NO_WHERE].every((id) => clean[id].ctx == null) && [...ND.NO_CHILD].every((id) => !clean[id].child));
   const a = ev(dirty), b = ev(clean);
   check("старое «не мешает» у нейтральных черт не входит в индекс", a.asd.index === b.asd.index && a.adhd.index === b.adhd.index, [a.asd.index, b.asd.index]);
+}
+// ── v0.13: новые задания и взгляды на ответы ──
+{
+  const L = ND.lab, SL = ND.sampleLab();
+  const S = { span: L.spanSummary(SL.span), tap: L.tapSummary(SL.tap), pitch: L.pitchSummary(SL.pitch), trace: L.traceSummary(SL.trace) };
+  check("пример: новые задания завершены", Object.values(S).every((x) => x.done), S);
+  for (const k of ["probe", "dd", "rt", "tp", "load", "navon", "span", "tap", "pitch", "trace"]) check(`${k}: есть контекст для СДВГ и РАС с источником`, L.CONTEXT[k] && /\d{4}|данных мало|почти нет|не связывают/.test(L.CONTEXT[k].adhd) && /\d{4}|данных мало/.test(L.CONTEXT[k].asd));
+  for (const k of Object.keys(S)) { const v = L.verdict(k, S[k]); check(`${k}: вывод с «вашим результатом» без пустых полей`, v && v.title && v.means && v.you && v.adhd && v.asd && !/undefined|NaN/.test(JSON.stringify(v)), v); }
+  check("цифровой ряд: объёмы примера 7 и 4", S.span.fwd === 7 && S.span.bwd === 4, S.span);
+  check("цифровой ряд: уровни", L.verdict("span", { done: true, fwd: 6, bwd: 6 }).tone === "ok" && L.verdict("span", { done: true, fwd: 6, bwd: 4 }).tone === "mid" && L.verdict("span", { done: true, fwd: 6, bwd: 3 }).tone === "high" && L.verdict("span", { done: true, fwd: 3, bwd: 2 }).tone === "na");
+  check("ритм: «плывёт» → СДВГ, «подстроиться» → РАС", /СДВГ/.test(L.verdict("tap", { done: true, enough: true, cv: 0.12, asynSd: 30, drift: 1 }).you) && /РАС/.test(L.verdict("tap", { done: true, enough: true, cv: 0.03, asynSd: 90, drift: 1 }).you));
+  check("высота звука: лесенка сходится к порогу около 1%", S.pitch.thr > 0.4 && S.pitch.thr < 3, S.pitch.thr);
+  check("высота звука: тонкий слух → стиль", L.verdict("pitch", { done: true, enough: true, thr: 0.3 }).tone === "style");
+  check("устройство: 30 Гц и опоздания таймеров — замечание", !L.devSummary(Array(60).fill(33), Array(20).fill(12)).ok && L.devSummary(Array(90).fill(16.7), Array(20).fill(1)).ok);
+  const R = ND.sampleResponses(), V = ND.views;
+  const W = V.want(R);
+  check("А4: в примере 4 ответа «хочется ли», в основном «да»", W.rows.length === 4 && W.kind === "want", W);
+  check("А4: «хочется» без признака не учитывается", V.want({ "A1-1": { now: { I: 0 }, want: 1 } }).rows.length === 0);
+  const SN = V.sensory(R), F = V.ef(R), K = V.compensation(R);
+  check("С13: паспорт по каналам", SN.answered >= 5 && SN.strong.length > 0 && SN.rows.every((x) => x.now == null || (x.now >= 0 && x.now <= 1)));
+  check("С13: все пункты каналов существуют", V.CHANNELS.every((c) => c.parts.every(([, ids]) => ids.every((id) => ITEMS.some((x) => x.id === id)))));
+  check("С14: 5 областей, пункты существуют", V.EF.length === 5 && V.EF.every((d) => d.ids.every((id) => ITEMS.some((x) => x.id === id)) && ND.SUPPORT.some((g) => g.key === d.support)));
+  check("С14: есть самая выраженная область", F.first && F.rows.length === 5);
+  check("С15: в примере есть компенсированные признаки", K.n > 0 && K.learned.every((x) => x.child >= 3 && x.now <= 1));
+  const T = V.thousand();
+  check("С16: 1000 человек сходятся", T.tp + T.fn + T.fp + T.tn === 1000 && T.tp === 18 && T.fp === 5 && Math.abs(T.ppv - 0.78) < 0.01, T);
+  const sums = { span: S.span, tap: S.tap, pitch: S.pitch, trace: S.trace }, vs = {}; for (const k of Object.keys(sums)) vs[k] = L.verdict(k, sums[k]);
+  const WD = V.wordsDeeds(R, sums, vs);
+  check("B12: «слова и дела» сравнивает задания с анкетой", WD.length >= 2 && WD.every((x) => typeof x.agree === "boolean" && x.items.length), WD);
+  const C = ND.clinician.build(R, SL);
+  check("отчёт для специалиста: новые задания, контекст, профили", ["Цифровой ряд:", "Стук в ритм", "Различение высоты", "Обведение дорожки", "в контексте РАС/СДВГ", "Анкета и задания", "ДОПОЛНИТЕЛЬНЫЕ ПРОФИЛИ", "Мотивация к общению", "Исполнительные функции"].every((x) => C.text.includes(x)) && !/undefined|NaN/.test(C.text));
+  const E0 = ev(R), R2 = JSON.parse(JSON.stringify(R)); for (const id of Object.keys(V.WANT)) if (R2[id]) R2[id].want = 1;
+  const E1 = ev(R2);
+  check("ответ «хочется ли» не меняет баллы", E0.asd.index === E1.asd.index && E0.adhd.index === E1.adhd.index && JSON.stringify(E0.validity) === JSON.stringify(E1.validity));
+  check("пример отчёта: баллы прежние (РАС 84, СДВГ 67)", E0.asd.index === 84 && E0.adhd.index === 67, [E0.asd.index, E0.adhd.index]);
 }
 console.log(`\n${passed} проверок пройдено, ${failed} не пройдено`);
 process.exit(failed ? 1 : 0);
